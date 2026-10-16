@@ -95,9 +95,28 @@ async function loadPetitions() {
     if (feats.length < 1000) break
   }
   return [...byId.values()].map((p) => {
-    const polys = p.polys.flatMap((g) => (g.type === 'Polygon' ? [g.coordinates] : g.coordinates))
-    return { ...p, footprint: { type: 'MultiPolygon', coordinates: polys } }
-  })
+    const polys = p.polys
+      .flatMap((g) => (g.type === 'Polygon' ? [g.coordinates] : g.coordinates))
+      .map((poly) => poly.map(cleanRing).filter(Boolean))
+      .filter((poly) => poly.length) // drop polygons whose outer ring was unusable
+    return { ...p, footprint: polys.length ? { type: 'MultiPolygon', coordinates: polys } : null }
+  }).filter((p) => p.footprint)
+}
+
+// The city's data occasionally has slivers: rings with repeated or too few points.
+function cleanRing(ring) {
+  const out = []
+  for (const pt of ring) {
+    const last = out[out.length - 1]
+    if (!last || last[0] !== pt[0] || last[1] !== pt[1]) out.push(pt)
+  }
+  if (out.length && (out[0][0] !== out[out.length - 1][0] || out[0][1] !== out[out.length - 1][1])) out.push(out[0])
+  return out.length >= 4 ? out : null
+}
+
+// turf.simplify can still reject odd shapes; fall back to the unsimplified shape.
+function safeSimplify(feature, tolerance) {
+  try { return turf.simplify(feature, { tolerance }) } catch { return feature }
 }
 
 /* ---------- 2. staff analysis PDFs for a petition ---------- */
@@ -204,7 +223,7 @@ async function placeRecords(p, r) {
   const out = []
   const received = p.received ? new Date(p.received).toISOString().slice(0, 7) : null
   const base = { petition: p.petition, received, source: r.source, page: r.page }
-  const siteShape = turf.simplify(turf.feature(p.footprint), { tolerance: 0.00002 })
+  const siteShape = safeSimplify(turf.feature(p.footprint), 0.00002)
   // Charlotte Water's statements describe mains "accessible for the rezoning boundary",
   // so the site's edge is a safe fallback when a street or parcel can't be matched.
   const edgeLines = turf.flatten(turf.polygonToLine(siteShape)).features.map((f) => f.geometry.coordinates)
@@ -229,7 +248,7 @@ async function placeRecords(p, r) {
     if (!geometry) { geometry = siteEdge; precision = 'site' }
     out.push({ ...base, kind: pipe.kind, sizeIn: pipe.sizeIn, where, matched, precision, located: true, geometry: round(geometry) })
   }
-  const site = round(turf.simplify(turf.feature(p.footprint), { tolerance: 0.0001 }).geometry)
+  const site = round(safeSimplify(turf.feature(p.footprint), 0.0001).geometry)
   if (r.noSewer) out.push({ ...base, kind: 'no-sewer', where: 'rezoning site', precision: 'site', located: true, geometry: site })
   if (r.noWater) out.push({ ...base, kind: 'no-water', where: 'rezoning site', precision: 'site', located: true, geometry: site })
   return out
@@ -258,7 +277,11 @@ async function worker() {
     if (r.pageStatus != null) pageStatusCounts[r.pageStatus] = (pageStatusCounts[r.pageStatus] || 0) + 1
     if (r.status === 'no-docs') noDocExamples.push(`${r.petition} (page ${r.pageStatus ?? '?'}, ${r.pageLinks ?? 0} links)`)
     if (r.status === 'ok') {
-      const recs = await placeRecords(p, r)
+      let recs = []
+      try { recs = await placeRecords(p, r) } catch (e) {
+        stats.skipped = (stats.skipped || 0) + 1
+        console.log(`  Skipped ${p.petition}: ${e.message}`)
+      }
       records.push(...recs)
       for (const x of recs) if (x.kind === 'water' || x.kind === 'sewer') { stats.pipes++; stats[x.precision]++ }
     }
@@ -276,7 +299,7 @@ const kb = Math.round((await fs.stat(OUT)).size / 1024)
 console.log(`\nWrote ${OUT} (${kb} KB)`)
 console.log(`  Petitions with a Charlotte Water statement: ${stats.ok}`)
 console.log(`  Pipe statements: ${stats.pipes} (on a matched street: ${stats.street}, a named parcel: ${stats.parcel}, the site boundary: ${stats.site})`)
-console.log(`  No statement found: ${stats['no-statement']}, no staff analysis online: ${stats['no-docs']}, errors (retry later): ${stats.error}`)
+console.log(`  No statement found: ${stats['no-statement']}, no staff analysis online: ${stats['no-docs']}, errors (retry later): ${stats.error}, skipped (bad shape): ${stats.skipped || 0}`)
 const pageCodes = Object.entries(pageStatusCounts).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}: ${v}`).join(', ')
 console.log(`  Petition page responses: ${pageCodes || 'none fetched'}`)
 const noDocSample = noDocExamples.slice(0, 5)

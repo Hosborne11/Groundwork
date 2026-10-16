@@ -8,8 +8,7 @@ import { activePetitionShapes } from './lib/charlotte'
 import { charlotteWaterLines } from './lib/charlotteWater'
 import ParcelPanel from './components/ParcelPanel'
 import Search from './components/Search'
-import LayerPanel from './components/LayerPanel'
-import SavedList from './components/SavedList'
+import SideRail from './components/SideRail'
 
 const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services'
 const BASEMAPS = {
@@ -34,7 +33,8 @@ export default function App() {
   const [layers, setLayers] = useState({ parcels: true, rezonings: true, sewer: true, water: true, flood: false })
   const [zoom, setZoom] = useState(11)
   const [saved, setSaved] = useState(loadSaved)
-  const [showSaved, setShowSaved] = useState(false)
+  const [menu, setMenu] = useState(null)
+  const [petitions, setPetitions] = useState(null)
 
   useEffect(() => {
     try { localStorage.setItem('groundwork:saved', JSON.stringify(saved)) } catch { /* storage off */ }
@@ -111,7 +111,7 @@ export default function App() {
     m.addControl(new maplibregl.ScaleControl({ unit: 'imperial' }), 'bottom-right')
     m.on('zoomend', () => setZoom(m.getZoom()))
     m.on('load', () => {
-      activePetitionShapes().then((d) => m.getSource('rezonings')?.setData(d)).catch(() => {})
+      activePetitionShapes().then((d) => { m.getSource('rezonings')?.setData(d); setPetitions(d) }).catch(() => setPetitions({ features: [] }))
       charlotteWaterLines().then(({ water, sewer }) => {
         m.getSource('cltWater')?.setData(water)
         m.getSource('cltSewer')?.setData(sewer)
@@ -192,30 +192,35 @@ export default function App() {
   }
 
   return (
-    <div className="app">
+    <div className={`app ${menu ? 'menu-open' : ''}`}>
       <div ref={mapEl} className="map" />
 
       <header className="topbar">
         <div className="brand">
-          <span className="brand-mark" aria-hidden="true" />
           <span className="brand-name">Groundwork</span>
-          <span className="brand-scope">Charlotte &amp; Cabarrus</span>
         </div>
         <Search onPick={flyToParcel} />
-        <button className={`saved-toggle ${showSaved ? 'on' : ''}`} onClick={() => setShowSaved((v) => !v)} aria-expanded={showSaved}>
-          Saved parcels <span className="count">{saved.length}</span>
-        </button>
       </header>
 
-      <LayerPanel layers={layers} setLayers={setLayers} basemap={basemap} setBasemap={setBasemap} zoom={zoom} lineMinZoom={LINE_MIN_ZOOM} parcelMinZoom={PARCEL_MIN_ZOOM} />
-
-      {showSaved && (
-        <SavedList
-          saved={saved}
-          onPick={(s) => { setShowSaved(false); flyToParcel(s.feature) }}
-          onRemove={(pin) => setSaved((l) => l.filter((s) => s.pin !== pin))}
-        />
-      )}
+      <SideRail
+        open={menu}
+        setOpen={setMenu}
+        basemap={basemap}
+        setBasemap={setBasemap}
+        layers={layers}
+        setLayers={setLayers}
+        zoom={zoom}
+        lineMinZoom={LINE_MIN_ZOOM}
+        parcelMinZoom={PARCEL_MIN_ZOOM}
+        saved={saved}
+        onPickSaved={(s) => { setMenu(null); flyToParcel(s.feature) }}
+        onRemoveSaved={(pin) => setSaved((l) => l.filter((s) => s.pin !== pin))}
+        petitions={petitions}
+        onPickPetition={(f) => {
+          const [w, s, e, n] = turf.bbox(f)
+          map.current?.fitBounds([[w, s], [e, n]], { padding: { top: 90, bottom: 60, left: 420, right: 60 }, maxZoom: 17 })
+        }}
+      />
 
       {zoom < PARCEL_MIN_ZOOM && !selected && !loadingParcel && <div className="hint">Zoom in to see parcel lines. You can click a parcel at any zoom.</div>}
       {loadingParcel && !selected && <div className="hint">Loading parcel…</div>}

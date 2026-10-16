@@ -16,11 +16,13 @@ export default function SavedList({ saved, onPick, onRemove }) {
     URL.revokeObjectURL(url)
   }
   return (
-    <div className="saved">
-      <div className="saved-head">
-        <h3>Saved parcels</h3>
-        {saved.length > 0 && <button className="btn" onClick={download}>Export CSV</button>}
-      </div>
+    <div className="saved-list">
+      {saved.length > 0 && (
+        <div className="saved-head">
+          <span className="muted-inline">{saved.length} parcel{saved.length === 1 ? '' : 's'}</span>
+          <button className="btn" onClick={download}>Export CSV</button>
+        </div>
+      )}
       {saved.length === 0 && <p className="muted">Click a parcel, then choose Save parcel to build a list here.</p>}
       <ul>
         {saved.map((s) => (

@@ -6,16 +6,9 @@ const ROWS = [
   { id: 'flood', label: 'FEMA flood zones', swatch: '#5BB5D9', note: '100-yr and floodway' },
 ]
 
-export default function LayerPanel({ layers, setLayers, basemap, setBasemap, zoom, lineMinZoom, parcelMinZoom }) {
+export default function LayerPanel({ layers, setLayers, zoom, lineMinZoom, parcelMinZoom }) {
   return (
-    <div className="layers">
-      <div className="seg" role="group" aria-label="Basemap">
-        {['imagery', 'streets'].map((b) => (
-          <button key={b} className={basemap === b ? 'on' : ''} onClick={() => setBasemap(b)}>
-            {b === 'imagery' ? 'Satellite' : 'Streets'}
-          </button>
-        ))}
-      </div>
+    <div className="layer-list">
       {ROWS.map((r) => (
         <label key={r.id} className="layer-row">
           <input type="checkbox" checked={layers[r.id]} onChange={() => setLayers((l) => ({ ...l, [r.id]: !l[r.id] }))} />

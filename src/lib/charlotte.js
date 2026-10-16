@@ -131,7 +131,7 @@ export function cityBaseRates() {
 export async function activePetitionShapes() {
   return getJSON(`${ACTIVE}/query`, {
     where: '1=1',
-    outFields: 'Petition,ReqZone',
+    outFields: 'Petition,Petitioner,ExistZone,ReqZone,Received,PetAcres',
     returnGeometry: true,
     outSR: 4326,
     geometryPrecision: 6,
