@@ -218,7 +218,14 @@ export default function App() {
         petitions={petitions}
         onPickPetition={(f) => {
           const [w, s, e, n] = turf.bbox(f)
-          map.current?.fitBounds([[w, s], [e, n]], { padding: { top: 90, bottom: 60, left: 420, right: 60 }, maxZoom: 17 })
+          // leave room for the menu on the left and the parcel panel on the right
+          const width = map.current?.getContainer().clientWidth || 0
+          const padding = width >= 1100
+            ? { top: 90, bottom: 60, left: 420, right: 440 }
+            : { top: 80, bottom: 80, left: 40, right: 40 }
+          map.current?.fitBounds([[w, s], [e, n]], { padding, maxZoom: 17 })
+          // open the parcel at a point guaranteed to be inside the petition site
+          selectParcel(turf.pointOnFeature(f).geometry.coordinates)
         }}
       />
 
