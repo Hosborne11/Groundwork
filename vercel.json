@@ -1,0 +1,10 @@
+{
+  "rewrites": [
+    { "source": "/gis/cabarrus/:path*", "destination": "https://location.cabarruscounty.us/arcgisservices/rest/services/:path*" },
+    { "source": "/gis/concord/:path*", "destination": "https://services2.arcgis.com/0esqB0FgvL32hAbY/arcgis/rest/services/:path*" },
+    { "source": "/gis/fema/:path*", "destination": "https://hazards.fema.gov/arcgis/rest/services/:path*" },
+    { "source": "/gis/clt/:path*", "destination": "https://gis.charlottenc.gov/arcgis/rest/services/:path*" },
+    { "source": "/gis/agolclt/:path*", "destination": "https://services.arcgis.com/9Nl857LBlQVyzq54/arcgis/rest/services/:path*" },
+    { "source": "/gis/sda", "destination": "https://sdmdataaccess.sc.egov.usda.gov/Tabular/post.rest" }
+  ]
+}

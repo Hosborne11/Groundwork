@@ -1,0 +1,96 @@
+import { useEffect, useMemo, useState } from 'react'
+import { DISTRICTS, districtByCode, parseZoning, PLACE_TYPE_FIT, placeTypeKey } from '../data/charlotteUdo'
+import { nearbyHistory, activePetitions, cityBaseRates } from '../lib/charlotte'
+import { rezoningOutlook } from '../lib/analysis'
+
+const fmtDate = (d) => (d ? d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '')
+
+function defaultTarget(currentCode, place) {
+  const cur = districtByCode[parseZoning(currentCode || '').base]
+  const fit = PLACE_TYPE_FIT[placeTypeKey(place?.name)]
+  const candidates = DISTRICTS.filter((d) => fit?.fits.includes(d.family))
+  const up = candidates.find((d) => !cur?.rank || !d.rank || d.rank > cur.rank)
+  return (up || candidates[0] || districtByCode['N2-A']).code
+}
+
+export default function RezoningSection({ parcel, zoning, place }) {
+  const [history, setHistory] = useState(null)
+  const [active, setActive] = useState([])
+  const [rates, setRates] = useState(null)
+  const [error, setError] = useState(null)
+  const [target, setTarget] = useState(null)
+
+  useEffect(() => {
+    let live = true
+    Promise.all([nearbyHistory(parcel), activePetitions(parcel).catch(() => [])])
+      .then(([h, a]) => { if (live) { setHistory(h); setActive(a) } })
+      .catch((e) => live && setError(e.message))
+    cityBaseRates().then((r) => live && setRates(r)).catch(() => {})
+    return () => { live = false }
+  }, [parcel])
+
+  useEffect(() => {
+    if (place !== undefined && zoning !== undefined && !target) setTarget(defaultTarget(zoning?.code, place))
+  }, [place, zoning, target])
+
+  const outlook = useMemo(() => {
+    if (!history || !target) return null
+    return rezoningOutlook({ currentCode: zoning?.code, targetCode: target, place, history, active })
+  }, [history, active, target, zoning, place])
+
+  if (zoning === null) return null
+  if (error) return <p className="pending">Rezoning history didn't load. Try again shortly.</p>
+
+  return (
+    <div className="outlook">
+      <label className="target">
+        <span>If rezoned to</span>
+        <select value={target || ''} onChange={(e) => setTarget(e.target.value)}>
+          {DISTRICTS.map((d) => <option key={d.code} value={d.code}>{d.code} · {d.name}</option>)}
+        </select>
+      </label>
+
+      {!outlook ? <p className="pending">Checking the Policy Map and nearby decisions…</p> : (
+        <>
+          <div className={`verdict v-${outlook.verdict.toLowerCase()}`}>{outlook.verdict}</div>
+          {outlook.factors.map((f) => (
+            <div key={f.title} className={`check tone-${f.tone}`}>
+              <div className="check-body full">
+                <div className="check-value small">{f.title}</div>
+                <div className="check-detail">{f.detail}</div>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+
+      {rates && (
+        <p className="base-rates">
+          Citywide since 2020: {rates.pct('App')}% of decided petitions were approved, {rates.pct('Wd')}% withdrawn, {rates.pct('Den') || '<1'}% denied.
+          {rates.days.median && <> Since the UDO, approvals took a median of {rates.days.median} days ({rates.days.p25}–{rates.days.p75} for the middle half).</>}
+          {' '}Withdrawal, not denial, is the usual way a rezoning fails.
+        </p>
+      )}
+
+      {history?.length > 0 && (
+        <details className="nearby">
+          <summary>Nearby petitions since 2020 ({history.length})</summary>
+          <ul>
+            {history.slice(0, 12).map((h) => (
+              <li key={h.petition}>
+                <span className="np-id">{h.petition}</span>
+                <span className="np-change">{h.from || '?'} → {h.to || '?'}</span>
+                <span className={`np-status s-${h.status.toLowerCase()}`}>{h.status}</span>
+                <span className="np-date">{fmtDate(h.received)}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      <p className="cite">
+        Charlotte Rezoning History and Future 2040 Policy Map. A planning screen, not a prediction of a council vote; staff make the official consistency finding.
+      </p>
+    </div>
+  )
+}
