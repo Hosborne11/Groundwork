@@ -1,5 +1,5 @@
 import {
-  N1, CONSERVATION_DISTRICTS, CONSERVATION_MIN_ACRES, MIXED_INCOME_MIN_ACRES,
+  N1, CONSERVATION_DISTRICTS, DISTRICTS, CONSERVATION_MIN_ACRES, MIXED_INCOME_MIN_ACRES,
   districtByCode, parseZoning, PLACE_TYPE_FIT, placeTypeKey,
 } from '../data/charlotteUdo'
 
@@ -36,11 +36,66 @@ export function n1Yield(code, grossAcres, floodPct) {
   return out
 }
 
+
+/* ---------- district families, including pre-2023 codes ---------- */
+
+// Closest modern family for pre-UDO district codes. Approximate by design.
+const LEGACY = [
+  [/^R-\d+MF/, 'N2'], [/^UR-/, 'N2'], [/^R-(3|4|5|6|8)$/, 'N1'],
+  [/^MUDD|^MX-|^TOD-M/, 'CAC'], [/^NS$/, 'NC'], [/^(B-1|B-2|BD|CC|B-1SCD)/, 'COM'],
+  [/^(O-[123]|BP|INST|RE-[123])/, 'CAMPUS'], [/^I-[12]/, 'ML'], [/^TOD/, 'TOD'],
+]
+export const FAMILY_NAME = {
+  N1: 'Neighborhood 1', N2: 'Neighborhood 2', NC: 'neighborhood center', CAC: 'activity center',
+  RAC: 'regional center', COM: 'commercial', CAMPUS: 'campus/office', ML: 'industrial', IMU: 'innovation mixed-use', TOD: 'transit-oriented',
+}
+
+/** { family, approx } for any zoning code, or null. */
+export function districtFamily(code) {
+  const base = parseZoning(code || '').base.toUpperCase()
+  if (!base) return null
+  const d = districtByCode[base]
+  if (d) return { family: d.family, approx: false }
+  const hit = LEGACY.find(([re]) => re.test(base))
+  return hit ? { family: hit[1], approx: true } : null
+}
+
+/** 'fits' | 'lower' | 'no' | null: how a district family sits against a place type. */
+export function placeFit(family, placeName) {
+  const key = placeTypeKey(placeName)
+  if (!family || !key) return null
+  if (family === 'TOD') return null
+  const fit = PLACE_TYPE_FIT[key]
+  if (fit.fits.includes(family)) return 'fits'
+  if (fit.lowerOk?.includes(family)) return 'lower'
+  return 'no'
+}
+
+/**
+ * What nearby rezonings actually did, read against each site's own place type.
+ * history items need { status, to, placeName }.
+ */
+export function areaTrend({ history, targetCode, place }) {
+  const target = districtByCode[targetCode]
+  const approved = history.filter((h) => h.status === 'Approved').map((h) => {
+    const fam = districtFamily(h.to)
+    return { ...h, family: fam?.family || null, approx: fam?.approx || false, fit: placeFit(fam?.family, h.placeName) }
+  })
+  const exceptions = approved.filter((h) => h.fit === 'no')
+  // Precedent: same kind of district approved on the same kind of land as this parcel.
+  const precedent = target ? approved.filter((h) => h.family === target.family && placeTypeKey(h.placeName) === placeTypeKey(place?.name)) : []
+  const counts = {}
+  for (const h of approved) if (h.family) counts[h.family] = (counts[h.family] || 0) + 1
+  const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 3)
+  const anyApprox = approved.some((h) => h.approx)
+  return { approved, exceptions, precedent, top, anyApprox }
+}
+
 /**
  * Rezoning outlook: a reasons-based scorecard, not a probability.
  * Each factor: { tone: 'good' | 'watch' | 'flag', title, detail }
  */
-export function rezoningOutlook({ currentCode, targetCode, place, history, active }) {
+export function rezoningOutlook({ currentCode, targetCode, place, history, active, trend }) {
   const factors = []
   const target = districtByCode[targetCode]
   const current = districtByCode[parseZoning(currentCode || '').base]
@@ -56,6 +111,9 @@ export function rezoningOutlook({ currentCode, targetCode, place, history, activ
     factors.push({ tone: 'good', title: `Policy Map: ${fit.name}`, detail: `${target.name} matches the planned place type.` })
   } else if (fit.lowerOk?.includes(target.family)) {
     factors.push({ tone: 'good', title: `Policy Map: ${fit.name}`, detail: `${target.name} is less intense than planned, which staff generally accept.` })
+  } else if ((trend?.precedent.length || 0) >= 2) {
+    const n = trend.precedent.length
+    factors.push({ tone: 'watch', title: `Policy Map: ${fit.name}`, detail: `${target.name} doesn't match the planned place type, but ${n} nearby ${FAMILY_NAME[target.family] || target.family} requests on ${fit.name} land were approved since 2020. Expect an inconsistency finding, with local precedent on your side.` })
   } else {
     factors.push({ tone: 'flag', title: `Policy Map: ${fit.name}`, detail: `${target.name} doesn't match the planned place type. Expect an inconsistency finding unless the place type is amended.` })
   }

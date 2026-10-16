@@ -66,7 +66,7 @@ export async function activePetitions(parcel) {
   }))
 }
 
-/** Decided petitions within half a mile since 2020. */
+/** Petitions within half a mile since 2020, each with a point inside its site. */
 export async function nearbyHistory(parcel) {
   const d = await getJSON(`${HISTORY}/query`, {
     geometry: polygonGeom(parcel),
@@ -78,17 +78,56 @@ export async function nearbyHistory(parcel) {
     where: "Received >= DATE '2020-01-01'",
     outFields: 'Petition,ExistingZoning,RequestedZoning,Status,Received,Approved,PetAcres,Type',
     orderByFields: 'Received DESC',
-    returnGeometry: false,
+    returnGeometry: true,
+    outSR: 4326,
+    maxAllowableOffset: 0.00005,
+    geometryPrecision: 6,
     resultRecordCount: 200,
-    f: 'json',
+    f: 'geojson',
   })
   // One petition can span several rows (one per original zoning area); keep one per petition.
   const seen = new Set()
-  return (d.features || []).filter(({ attributes: a }) => (seen.has(a.Petition) ? false : seen.add(a.Petition))).map(({ attributes: a }) => ({
-    petition: a.Petition, from: (a.ExistingZoning || '').trim(), to: (a.RequestedZoning || '').trim(),
-    status: STATUS[a.Status] || 'Pending', received: a.Received ? new Date(a.Received) : null, acres: a.PetAcres,
-    conditional: a.Type === 'CD' || a.Type === 'Conditional',
-  }))
+  return (d.features || []).filter((f) => (seen.has(f.properties.Petition) ? false : seen.add(f.properties.Petition))).map((f) => {
+    const a = f.properties
+    let point = null
+    try { point = f.geometry ? turf.pointOnFeature(f).geometry.coordinates : null } catch { /* bad shape */ }
+    return {
+      petition: a.Petition, from: (a.ExistingZoning || '').trim(), to: (a.RequestedZoning || '').trim(),
+      status: STATUS[a.Status] || 'Pending', received: a.Received ? new Date(a.Received) : null, acres: a.PetAcres,
+      conditional: a.Type === 'CD' || a.Type === 'Conditional', point,
+    }
+  })
+}
+
+/** 2040 Policy Map polygons around a parcel (generalized), for classifying nearby sites locally. */
+export async function placeTypesAround(parcel, miles = 0.6) {
+  const [w, s, e, n] = turf.bbox(parcel)
+  const lat = (s + n) / 2
+  const dLat = miles / 69
+  const dLng = dLat / Math.cos((lat * Math.PI) / 180)
+  const d = await getJSON(`${POLICY}/query`, {
+    geometry: [w - dLng, s - dLat, e + dLng, n + dLat].join(','),
+    geometryType: 'esriGeometryEnvelope',
+    inSR: 4326,
+    spatialRel: 'esriSpatialRelIntersects',
+    outFields: 'PlaceTypeFullTxt',
+    returnGeometry: true,
+    outSR: 4326,
+    maxAllowableOffset: 0.0002,
+    geometryPrecision: 5,
+    f: 'geojson',
+  })
+  return d.features || []
+}
+
+/** Place type name at a point, from polygons returned by placeTypesAround. */
+export function placeTypeAt(polygons, point) {
+  if (!point) return null
+  const pt = turf.point(point)
+  for (const f of polygons) {
+    try { if (turf.booleanPointInPolygon(pt, f)) return f.properties.PlaceTypeFullTxt } catch { /* skip bad shape */ }
+  }
+  return null
 }
 
 let baseRatesCache = null
