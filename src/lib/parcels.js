@@ -5,6 +5,12 @@ import { getJSON } from './gis'
 const MECK = '/gis/clt/PLN/AllParcelData/MapServer/0'
 const MECK_LINES = '/gis/clt/CountyData/Parcels/MapServer/0'
 const CAB = '/gis/cabarrus/OpenData/Tax_Parcels/MapServer/1'
+const YORK = '/gis/yorksc/Parcels/FeatureServer/0'
+const YORK_FIELDS = [
+  'ParcelID', 'Owner1', 'Owner2', 'MailAddr1', 'MailAddr2', 'MailApt', 'MailCity', 'MailState', 'MailZip',
+  'PropertyAddress', 'LegalDescription', 'TransferBook', 'TransferPage', 'DateSold', 'SalePrice',
+  'AprLandVal', 'AprBldgVal', 'AprTotVal', 'GISSizeAC', 'LandUseDesc', 'ImprovedStatus', 'subdivision', 'NeighborhoodDesc', 'YearBuilt',
+].join(',')
 
 const MECK_FIELDS = [
   'parcelid', 'yearid', 'owner1firstname', 'owner1lastname', 'owner2firstname', 'owner2lastname',
@@ -79,6 +85,40 @@ function normalizeCab(f) {
   }
 }
 
+// York County, SC. Appraised value is the market figure; SC "assessed" value is a small tax-ratio number.
+// Sales under $100 are nominal transfers (family, estate, corrective deeds), not market sales.
+function normalizeYork(f) {
+  const a = f.properties
+  const price = num(a.SalePrice)
+  const sold = a.DateSold ? new Date(a.DateSold) : null
+  return {
+    type: 'Feature',
+    geometry: f.geometry,
+    properties: {
+      id: clean(a.ParcelID),
+      county: 'York',
+      owner: [clean(a.Owner1), clean(a.Owner2)].filter(Boolean).join(' & '),
+      mail: [clean(a.MailAddr1), clean(a.MailAddr2), clean(a.MailApt), [clean(a.MailCity), clean(a.MailState), clean(a.MailZip)].filter(Boolean).join(' ')].filter(Boolean).join(', '),
+      address: clean(a.PropertyAddress),
+      acres: num(a.GISSizeAC) || acresOf(f),
+      assessed: num(a.AprTotVal),
+      land: num(a.AprLandVal),
+      building: num(a.AprBldgVal),
+      salePrice: price >= 100 ? price : null,
+      nominalSale: price != null && price > 0 && price < 100,
+      saleYear: sold ? sold.getFullYear() : null,
+      saleMonth: sold ? sold.getMonth() + 1 : null,
+      deed: a.TransferBook ? `Book ${clean(a.TransferBook)}, page ${clean(a.TransferPage)}` : null,
+      deedBook: clean(a.TransferBook), deedPage: clean(a.TransferPage),
+      legal: clean(a.LegalDescription),
+      neighborhood: clean(a.subdivision) || clean(a.NeighborhoodDesc),
+      landUse: clean(a.LandUseDesc),
+      vacant: clean(a.ImprovedStatus).toUpperCase() === 'VACANT',
+      yearBuilt: num(a.YearBuilt) || null,
+    },
+  }
+}
+
 // AllParcelData can hold one row per tax year; keep the newest.
 const newestMeck = (features) => [...features].sort((x, y) => (y.properties.yearid || 0) - (x.properties.yearid || 0))[0]
 
@@ -96,13 +136,15 @@ const pointQuery = (lng, lat, outFields) => ({
 })
 
 export async function parcelAtPoint([lng, lat]) {
-  const [meck, cab] = await Promise.allSettled([
+  const [meck, cab, york] = await Promise.allSettled([
     getJSON(`${MECK}/query`, pointQuery(lng, lat, MECK_FIELDS)),
     getJSON(`${CAB}/query`, pointQuery(lng, lat, '*')),
+    getJSON(`${YORK}/query`, pointQuery(lng, lat, YORK_FIELDS)),
   ])
   if (meck.status === 'fulfilled' && meck.value.features?.length) return normalizeMeck(newestMeck(meck.value.features))
   if (cab.status === 'fulfilled' && cab.value.features?.length) return normalizeCab(cab.value.features[0])
-  if (meck.status === 'rejected' && cab.status === 'rejected') throw new Error('Parcel services are not responding')
+  if (york.status === 'fulfilled' && york.value.features?.length) return normalizeYork(york.value.features[0])
+  if ([meck, cab, york].every((r) => r.status === 'rejected')) throw new Error('Parcel services are not responding')
   return null
 }
 
@@ -118,14 +160,20 @@ export async function searchParcels(term) {
     : looksLikeAddress
       ? `location_address LIKE '${t}%'`
       : `owner1lastname LIKE '%${t}%' OR owner2lastname LIKE '%${t}%'`
+  const yorkWhere = looksLikePin
+    ? `ParcelID LIKE '${digits}%'`
+    : looksLikeAddress
+      ? `UPPER(PropertyAddress) LIKE '${t}%'`
+      : `UPPER(Owner1) LIKE '%${t}%' OR UPPER(Owner2) LIKE '%${t}%'`
   const cabWhere = looksLikePin
     ? `PIN14 LIKE '${digits}%'`
     : `UPPER(AcctName1) LIKE '%${t}%' OR UPPER(AcctName2) LIKE '%${t}%'`
 
   const common = { returnGeometry: true, outSR: 4326, resultRecordCount: 15, f: 'geojson' }
-  const [meck, cab] = await Promise.allSettled([
+  const [meck, cab, york] = await Promise.allSettled([
     getJSON(`${MECK}/query`, { ...common, resultRecordCount: 40, where: meckWhere, outFields: MECK_FIELDS }),
     looksLikeAddress ? Promise.resolve({ features: [] }) : getJSON(`${CAB}/query`, { ...common, where: cabWhere, outFields: '*' }),
+    getJSON(`${YORK}/query`, { ...common, where: yorkWhere, outFields: YORK_FIELDS }),
   ])
   const out = []
   if (meck.status === 'fulfilled') {
@@ -137,7 +185,8 @@ export async function searchParcels(term) {
     for (const f of byId.values()) out.push(normalizeMeck(f))
   }
   if (cab.status === 'fulfilled') for (const f of cab.value.features || []) out.push(normalizeCab(f))
-  if (meck.status === 'rejected' && cab.status === 'rejected') throw new Error('Parcel search unavailable')
+  if (york.status === 'fulfilled') for (const f of york.value.features || []) out.push(normalizeYork(f))
+  if ([meck, cab, york].every((r) => r.status === 'rejected')) throw new Error('Parcel search unavailable')
   return out.sort((a, b) => b.properties.acres - a.properties.acres).slice(0, 25)
 }
 
@@ -152,14 +201,12 @@ export async function parcelLinesInView([w, s, e, n]) {
     geometryPrecision: 6,
     f: 'geojson',
   }
-  const [meck, cab] = await Promise.allSettled([
+  const results = await Promise.allSettled([
     getJSON(`${MECK_LINES}/query`, { ...q, outFields: 'PID', resultRecordCount: 3000 }),
     getJSON(`${CAB}/query`, { ...q, outFields: 'PIN14', resultRecordCount: 2000 }),
+    getJSON(`${YORK}/query`, { ...q, outFields: 'ParcelID', resultRecordCount: 2000 }),
   ])
-  const features = [
-    ...(meck.status === 'fulfilled' ? meck.value.features || [] : []),
-    ...(cab.status === 'fulfilled' ? cab.value.features || [] : []),
-  ]
+  const features = results.flatMap((r) => (r.status === 'fulfilled' ? r.value.features || [] : []))
   return { type: 'FeatureCollection', features }
 }
 
@@ -172,12 +219,15 @@ export async function deedGroup(parcel) {
   const p = parcel.properties
   if (!p.deedBook || !p.deedPage || !(p.salePrice > 0)) return null
   const esc = (v) => v.replace(/'/g, "''")
-  const isMeck = p.county === 'Mecklenburg'
-  const d = await getJSON(`${isMeck ? MECK : CAB}/query`, {
-    where: isMeck
-      ? `deed_book = '${esc(p.deedBook)}' AND deed_page = '${esc(p.deedPage)}'`
-      : `DeedBook = '${esc(p.deedBook)}' AND DeedPage = '${esc(p.deedPage)}'`,
-    outFields: isMeck ? MECK_FIELDS : '*',
+  const src = {
+    Mecklenburg: { url: MECK, book: 'deed_book', page: 'deed_page', fields: MECK_FIELDS, norm: normalizeMeck },
+    Cabarrus: { url: CAB, book: 'DeedBook', page: 'DeedPage', fields: '*', norm: normalizeCab },
+    York: { url: YORK, book: 'TransferBook', page: 'TransferPage', fields: YORK_FIELDS, norm: normalizeYork },
+  }[p.county]
+  if (!src) return null
+  const d = await getJSON(`${src.url}/query`, {
+    where: `${src.book} = '${esc(p.deedBook)}' AND ${src.page} = '${esc(p.deedPage)}'`,
+    outFields: src.fields,
     returnGeometry: true,
     outSR: 4326,
     geometryPrecision: 6,
@@ -186,7 +236,7 @@ export async function deedGroup(parcel) {
   })
   const byId = new Map()
   for (const f of d.features || []) {
-    const n = isMeck ? normalizeMeck(f) : normalizeCab(f)
+    const n = src.norm(f)
     // Mecklenburg keeps one row per tax year; any row will do for grouping.
     if (!byId.has(n.properties.id)) byId.set(n.properties.id, n.properties)
   }

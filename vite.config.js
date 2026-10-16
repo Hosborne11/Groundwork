@@ -20,6 +20,7 @@ export default defineConfig({
       '/gis/clt': proxy('https://gis.charlottenc.gov', '/gis/clt', '/arcgis/rest/services'),
       '/gis/agolclt': proxy('https://services.arcgis.com', '/gis/agolclt', '/9Nl857LBlQVyzq54/arcgis/rest/services'),
       '/gis/tiger': proxy('https://tigerweb.geo.census.gov', '/gis/tiger', '/arcgis/rest/services/TIGERweb'),
+      '/gis/yorksc': proxy('https://services1.arcgis.com', '/gis/yorksc', '/2AGLxyiJoNiVHKwq/arcgis/rest/services'),
       '/gis/sda': proxy('https://sdmdataaccess.sc.egov.usda.gov', '/gis/sda', '/Tabular/post.rest'),
     },
   },

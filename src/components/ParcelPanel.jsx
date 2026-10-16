@@ -4,6 +4,7 @@ import { nearestSewer, nearestWater, floodShare, soilsFor, zoningAt } from '../l
 import { charlotteZoning, placeType } from '../lib/charlotte'
 import { charlotteWaterNear } from '../lib/charlotteWater'
 import { deedGroup } from '../lib/parcels'
+import { yorkZoning, yorkServiceProvider, yorkFutureLandUse } from '../lib/york'
 import BuildSection from './BuildSection'
 import RezoningSection from './RezoningSection'
 
@@ -75,6 +76,27 @@ const charlotteUtility = (kind) => async (parcel) => {
     link: b.source,
   }
 }
+// York County: zoning (with the county's own legend names), utility provider, 2035 land use
+async function yorkZoningCheck(parcel) {
+  const z = await yorkZoning(parcel)
+  if (!z.code) {
+    return { tone: 'none', value: z.incorporated ? `Town of ${z.town}` : 'Not mapped', detail: z.incorporated ? `${z.town} zoning isn't loaded yet; check with the town.` : 'No zoning found for this parcel.' }
+  }
+  const extra = [z.conditional && 'Conditional zoning', z.caseNumber && `Case ${z.caseNumber}`].filter(Boolean).join(' · ')
+  return { tone: 'none', value: `${z.code}${z.name ? ` · ${z.name}` : ''}`, detail: [`${z.source} zoning`, z.town !== 'Rock Hill' && z.town, extra].filter(Boolean).join(' · ') }
+}
+async function yorkUtilityCheck(parcel) {
+  const s = await yorkServiceProvider(parcel)
+  if (!s) return { tone: 'watch', value: 'Outside mapped service areas', detail: 'No public water or sewer provider area covers this parcel. Expect well and septic unless service is extended.' }
+  return { tone: 'good', value: s.provider, detail: "Inside this provider's water and sewer service area. Pipe locations aren't published, so distance to a main isn't shown." }
+}
+async function yorkLandUseCheck(parcel) {
+  const code = await yorkFutureLandUse(parcel)
+  return code
+    ? { tone: 'none', value: code, detail: "York County 2035 Land Use Plan designation (the county publishes codes only)." }
+    : { tone: 'none', value: 'Not designated', detail: 'No 2035 Land Use Plan designation found.' }
+}
+
 const cltSewerCheck = charlotteUtility('sewer')
 const cltWaterCheck = charlotteUtility('water')
 
@@ -128,19 +150,24 @@ function CheckRow({ label, swatch, state }) {
 export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onClose }) {
   const p = parcel.properties
   const isMeck = p.county === 'Mecklenburg'
+  const isYork = p.county === 'York'
 
   const flood = useCheck(floodCheck, parcel)
   const soils = useCheck(soilsCheck, parcel)
-  const sewer = useCheck(isMeck ? cltSewerCheck : sewerCheck, parcel)
-  const water = useCheck(isMeck ? cltWaterCheck : waterCheck, parcel)
-  const cabZoning = useCheck(cabarrusZoningCheck, parcel, !isMeck)
+  const sewer = useCheck(isMeck ? cltSewerCheck : sewerCheck, parcel, !isYork)
+  const water = useCheck(isMeck ? cltWaterCheck : waterCheck, parcel, !isYork)
+  const cabZoning = useCheck(cabarrusZoningCheck, parcel, p.county === 'Cabarrus')
+  const yZoning = useCheck(yorkZoningCheck, parcel, isYork)
+  const yUtility = useCheck(yorkUtilityCheck, parcel, isYork)
+  const yLandUse = useCheck(yorkLandUseCheck, parcel, isYork)
   const cltZoning = useValue(charlotteZoning, parcel, isMeck)
   const place = useValue(placeType, parcel, isMeck)
   const deed = useValue(deedGroup, parcel)
   const [copied, setCopied] = useState(false)
 
   const floodPct = flood.status === 'done' ? flood.pct : null
-  const sale = p.salePrice ? `${money(p.salePrice)} · ${p.saleMonth ? `${p.saleMonth}/` : ''}${p.saleYear || ''}` : 'No recorded sale'
+  const saleDate = `${p.saleMonth ? `${p.saleMonth}/` : ''}${p.saleYear || ''}`
+  const sale = p.salePrice ? `${money(p.salePrice)} · ${saleDate}` : p.nominalSale ? `Nominal transfer, not a market sale · ${saleDate}` : 'No recorded sale'
 
   const copySummary = async () => {
     const line = (lab, s) => (s.status === 'done' ? `${lab}: ${s.value}${s.detail ? ` (${s.detail})` : ''}` : null)
@@ -195,6 +222,9 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
         <CheckRow label="Sewer" swatch="#38A169" state={sewer} />
         <CheckRow label="Water" swatch="#2F7DE1" state={water} />
         <CheckRow label="Zoning" state={cabZoning} />
+        <CheckRow label="Zoning" state={yZoning} />
+        <CheckRow label="Utilities" swatch="#2F7DE1" state={yUtility} />
+        <CheckRow label="2035 plan" state={yLandUse} />
         {isMeck && <p className="note">Charlotte Water doesn't publish its pipe network. These distances come from the mains it described in nearby rezoning reviews, so they confirm a main exists but may not show the closest one.</p>}
       </section>
 
@@ -202,7 +232,7 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
         <h3>Ownership and value</h3>
         <dl className="facts">
           <dt>Mailing address</dt><dd>{p.mail || '—'}</dd>
-          <dt>{isMeck ? 'Market value' : 'Assessed value'}</dt><dd>{money(p.assessed)}</dd>
+          <dt>{isMeck ? 'Market value' : isYork ? 'Appraised value' : 'Assessed value'}</dt><dd>{money(p.assessed)}</dd>
           <dt>Land</dt><dd>{money(p.land)}</dd>
           <dt>Buildings</dt><dd>{money(p.building)}</dd>
           <dt>Last sale</dt>
@@ -212,12 +242,15 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
           </dd>
           <dt>Deed</dt><dd>{p.deed || '—'}</dd>
           <dt>Legal description</dt><dd>{p.legal || '—'}</dd>
-          <dt>Neighborhood</dt><dd>{p.neighborhood || '—'}</dd>
+          <dt>{isYork ? 'Subdivision' : 'Neighborhood'}</dt><dd>{p.neighborhood || '—'}</dd>
+          {p.yearBuilt && <><dt>Year built</dt><dd>{p.yearBuilt}</dd></>}
         </dl>
       </section>
 
       <p className="sources">
-        {isMeck ? 'Mecklenburg County / City of Charlotte GIS, Charlotte UDO, Charlotte Water rezoning comments, FEMA NFHL, USDA NRCS.' : 'Cabarrus County GIS, City of Concord Utilities, FEMA NFHL, USDA NRCS.'}
+        {isMeck ? 'Mecklenburg County / City of Charlotte GIS, Charlotte UDO, Charlotte Water rezoning comments, FEMA NFHL, USDA NRCS.'
+          : isYork ? 'York County GIS, City of Rock Hill zoning, FEMA NFHL, USDA NRCS.'
+          : 'Cabarrus County GIS, City of Concord Utilities, FEMA NFHL, USDA NRCS.'}
         {' '}Planning estimates, not survey or legal advice.
       </p>
     </aside>

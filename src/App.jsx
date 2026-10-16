@@ -59,7 +59,7 @@ export default function App() {
       const feature = await parcelAtPoint(lngLat)
       if (!feature) {
         setSelected(null)
-        setError('No parcel here. Coverage is Mecklenburg and Cabarrus counties for now.')
+        setError('No parcel here. Coverage is Mecklenburg, Cabarrus, and York counties for now.')
         return
       }
       setSelected(feature)
@@ -84,7 +84,7 @@ export default function App() {
       container: mapEl.current,
       center: [-80.84, 35.23],
       zoom: 11,
-      maxBounds: [[-81.4, 34.9], [-79.8, 35.9]],
+      maxBounds: [[-81.8, 34.55], [-79.8, 35.9]],
       style: {
         version: 8,
         sources: {
@@ -209,7 +209,7 @@ export default function App() {
     const narrow = m.getContainer().clientWidth < 760
     const padding = narrow
       ? { top: 80, bottom: 90, left: 24, right: 24 }
-      : { top: 80, bottom: 40, left: 40 + (menu ? 320 : 0), right: selected ? 460 : 40 }
+      : { top: 80, bottom: 40, left: 76 + 40 + (menu ? 320 : 0), right: selected ? 460 : 40 } // 76 = side rail width
     if (id === 'all') {
       keepCountyLabel.current = true
       m.setFilter('county-selected', ['in', ['get', 'GEOID'], ['literal', feats.map((f) => f.properties.GEOID)]])

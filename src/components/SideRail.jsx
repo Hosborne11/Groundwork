@@ -134,8 +134,9 @@ function Sources() {
   const [water, setWater] = useState(null)
   useEffect(() => { loadCharlotteWater().then(setWater) }, [])
   const rows = [
-    ['Parcels, owners, values, sales', 'Mecklenburg County (via City of Charlotte GIS) and Cabarrus County GIS', 'Live'],
-    ['Zoning', 'City of Charlotte; Cabarrus County for its six towns', 'Live'],
+    ['Parcels, owners, values, sales', 'Mecklenburg County (via City of Charlotte GIS), Cabarrus County GIS, York County SC GIS', 'Live'],
+    ['Zoning', 'City of Charlotte; Cabarrus County for its six towns; York County and City of Rock Hill', 'Live'],
+    ['York water and sewer providers', 'York County service area boundaries', 'Live'],
     ['Zoning rules', 'Charlotte UDO Article 4 (Neighborhood 1 districts)', 'Checked October 2026'],
     ['2040 place types', 'Charlotte Future 2040 Policy Map', 'Live'],
     ['Rezoning petitions and history', 'City of Charlotte Planning', 'Live'],
