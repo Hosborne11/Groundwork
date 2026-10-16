@@ -1,5 +1,7 @@
 import { N1, N1_COVERAGE, N1_USES, N1_SOURCE, UDO_HOME, districtByCode, parseZoning, CONSERVATION_MIN_ACRES } from '../data/charlotteUdo'
 import { n1Yield, LOT_EFFICIENCY } from '../lib/analysis'
+import ZoneCode from './ZoneCode'
+import { explainZoning } from '../data/zoningKey'
 
 const OVERLAY_NAMES = { HDO: 'Historic District Overlay', ANDO: 'Airport Noise Disclosure Overlay', PED: 'Pedestrian Overlay' }
 const sf = (n) => `${n.toLocaleString()} sq ft`
@@ -17,8 +19,8 @@ export default function BuildSection({ zoning, acres, floodPct }) {
   return (
     <div className="build">
       <div className="zone-head">
-        <span className="zone-code">{zoning.code}</span>
-        <span className="zone-name">{district?.name || zoning.className}</span>
+        <ZoneCode code={zoning.code} className="zone-code" />
+        <span className="zone-name">{district?.name || explainZoning(z.base)[0]?.name || zoning.className}</span>
       </div>
       {overlays.length > 0 && (
         <div className="chips">

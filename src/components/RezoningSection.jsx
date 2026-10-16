@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { DISTRICTS, districtByCode, parseZoning, PLACE_TYPE_FIT, placeTypeKey } from '../data/charlotteUdo'
 import { nearbyHistory, activePetitions, cityBaseRates, placeTypesAround, placeTypeAt } from '../lib/charlotte'
 import { rezoningOutlook, areaTrend, FAMILY_NAME } from '../lib/analysis'
+import ZoneCode from './ZoneCode'
 
 const fmtDate = (d) => (d ? d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '')
 
@@ -56,7 +57,7 @@ export default function RezoningSection({ parcel, zoning, place, fromPetition })
     <div className="outlook">
       {fromPetition && (
         <p className="note petition-note">
-          Petition <strong>{fromPetition.petition}</strong> requests <strong>{fromPetition.to || 'a change'}</strong>
+          Petition <strong>{fromPetition.petition}</strong> requests <strong>{fromPetition.to ? <ZoneCode code={fromPetition.to} /> : 'a change'}</strong>
           {requestedBase && !districtByCode[requestedBase] ? '. That isn\'t a UDO district, so pick one below to compare.' : '. The outlook below grades that request.'}
         </p>
       )}
@@ -98,7 +99,7 @@ export default function RezoningSection({ parcel, zoning, place, fromPetition })
             {history.slice(0, 12).map((h) => (
               <li key={h.petition}>
                 <span className="np-id">{h.petition}</span>
-                <span className="np-change">{h.from || '?'} → {h.to || '?'}{h.placeName && <span className="np-place">on {h.placeName}</span>}</span>
+                <span className="np-change"><ZoneCode code={h.from} /> → <ZoneCode code={h.to} />{h.placeName && <span className="np-place">on {h.placeName}</span>}</span>
                 <span className={`np-status s-${h.status.toLowerCase()}`}>{h.status}</span>
                 <span className="np-date">{fmtDate(h.received)}</span>
               </li>

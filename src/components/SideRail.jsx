@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import LayerPanel from './LayerPanel'
 import SavedList from './SavedList'
+import ZoningKey from './ZoningKey'
+import ZoneCode from './ZoneCode'
 import { loadCharlotteWater } from '../lib/charlotteWater'
 
 // Simple stroke icons, drawn to match the type weight in the rail.
@@ -10,6 +12,7 @@ const ICONS = {
   saved: <path d="M6 3.5h12v17l-6-4.2-6 4.2v-17z" />,
   rezonings: <><path d="M5 21V4" /><path d="M5 4h11l-2 3.5L16 11H5" /></>,
   sources: <><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7.5v.01" /></>,
+  key: <><circle cx="8" cy="15" r="4.5" /><path d="m11.3 11.7 8.2-8.2M16.5 6.5l2.5 2.5M14 9l2 2" /></>,
   account: <><circle cx="12" cy="8.5" r="3.8" /><path d="M4.5 20c1.3-3.6 4.1-5.4 7.5-5.4s6.2 1.8 7.5 5.4" /></>,
 }
 const Icon = ({ name }) => (
@@ -23,6 +26,7 @@ const ITEMS = [
   { id: 'layers', label: 'Layers' },
   { id: 'saved', label: 'Saved' },
   { id: 'rezonings', label: 'Rezonings' },
+  { id: 'key', label: 'Zoning Key' },
   { id: 'sources', label: 'Sources' },
 ]
 
@@ -71,6 +75,7 @@ export default function SideRail({
             {open === 'layers' && <LayerPanel layers={layers} setLayers={setLayers} zoom={zoom} lineMinZoom={lineMinZoom} parcelMinZoom={parcelMinZoom} />}
             {open === 'saved' && <SavedList saved={saved} onPick={onPickSaved} onRemove={onRemoveSaved} />}
             {open === 'rezonings' && <Rezonings petitions={petitions} onPick={onPickPetition} />}
+            {open === 'key' && <ZoningKey />}
             {open === 'sources' && <Sources />}
             {open === 'account' && <Account />}
           </div>
@@ -112,11 +117,11 @@ function Rezonings({ petitions, onPick }) {
       <ul className="petition-list">
         {list.map(({ f, p }) => (
           <li key={p.Petition}>
-            <button onClick={() => onPick(f)}>
+            <div className="pl-row" role="button" tabIndex={0} onClick={() => onPick(f)} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onPick(f))}>
               <span className="pl-top"><strong>{p.Petition}</strong>{p.PetAcres ? <span>{Number(p.PetAcres).toFixed(1)} ac</span> : null}</span>
-              <span className="pl-change">{(p.ExistZone || '?').trim()} → {(p.ReqZone || '?').trim()}</span>
+              <span className="pl-change"><ZoneCode code={(p.ExistZone || '').trim()} /> → <ZoneCode code={(p.ReqZone || '').trim()} /></span>
               {p.Petitioner && <span className="pl-who">{p.Petitioner}</span>}
-            </button>
+            </div>
           </li>
         ))}
         {!list.length && <li className="muted">No petitions match.</li>}
