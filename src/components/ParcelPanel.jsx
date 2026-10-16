@@ -3,6 +3,7 @@ import * as turf from '@turf/turf'
 import { nearestSewer, nearestWater, floodShare, soilsFor, zoningAt } from '../lib/gis'
 import { charlotteZoning, placeType } from '../lib/charlotte'
 import { charlotteWaterNear } from '../lib/charlotteWater'
+import { deedGroup } from '../lib/parcels'
 import BuildSection from './BuildSection'
 import RezoningSection from './RezoningSection'
 
@@ -135,6 +136,7 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
   const cabZoning = useCheck(cabarrusZoningCheck, parcel, !isMeck)
   const cltZoning = useValue(charlotteZoning, parcel, isMeck)
   const place = useValue(placeType, parcel, isMeck)
+  const deed = useValue(deedGroup, parcel)
   const [copied, setCopied] = useState(false)
 
   const floodPct = flood.status === 'done' ? flood.pct : null
@@ -148,7 +150,7 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
       isMeck && cltZoning && `Zoning: ${cltZoning.code}`,
       isMeck && place && `2040 place type: ${place.name}`,
       line('Flood', flood), line('Soils', soils), line('Sewer', sewer), line('Water', water), !isMeck && line('Zoning', cabZoning),
-      `Assessed: ${money(p.assessed)} · Last sale: ${sale}`,
+      `Assessed: ${money(p.assessed)} · Last sale: ${sale}${deed ? ` (deed covers ${deed.count} parcels)` : ''}`,
       `Owner mailing: ${p.mail}`,
     ].filter(Boolean).join('\n')
     try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1800) } catch { /* clipboard blocked */ }
@@ -203,7 +205,11 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
           <dt>{isMeck ? 'Market value' : 'Assessed value'}</dt><dd>{money(p.assessed)}</dd>
           <dt>Land</dt><dd>{money(p.land)}</dd>
           <dt>Buildings</dt><dd>{money(p.building)}</dd>
-          <dt>Last sale</dt><dd>{sale}</dd>
+          <dt>Last sale</dt>
+          <dd>
+            {sale}
+            {deed && <MultiParcelSale deed={deed} price={p.salePrice} />}
+          </dd>
           <dt>Deed</dt><dd>{p.deed || '—'}</dd>
           <dt>Legal description</dt><dd>{p.legal || '—'}</dd>
           <dt>Neighborhood</dt><dd>{p.neighborhood || '—'}</dd>
@@ -215,5 +221,27 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
         {' '}Planning estimates, not survey or legal advice.
       </p>
     </aside>
+  )
+}
+
+function MultiParcelSale({ deed, price }) {
+  const perAcre = deed.totalAcres > 0 ? price / deed.totalAcres : null
+  return (
+    <div className="multi-sale">
+      <strong>Sale may include {deed.count}{deed.capped ? '+' : ''} parcels.</strong>{' '}
+      The same deed covers {deed.count - 1} other parcel{deed.count > 2 ? 's' : ''}, and the county records the full price on each.
+      {' '}{money(price)} likely bought all {deed.count}: {deed.totalAcres.toFixed(2)} acres
+      {deed.totalValue > 0 ? <>, {money(deed.totalValue)} combined value</> : null}
+      {perAcre ? <>, about {money(perAcre)} per acre</> : null}.
+      <details>
+        <summary>Other parcels on this deed</summary>
+        <ul>
+          {deed.others.slice(0, 12).map((o) => (
+            <li key={o.id}>{o.address || `Parcel ${o.id}`} <span>· {o.acres.toFixed(2)} ac</span></li>
+          ))}
+          {deed.others.length > 12 && <li>+{deed.others.length - 12} more</li>}
+        </ul>
+      </details>
+    </div>
   )
 }

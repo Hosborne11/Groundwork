@@ -42,6 +42,7 @@ function normalizeMeck(f) {
       saleYear: sale ? sale.getFullYear() : null,
       saleMonth: sale ? sale.getMonth() + 1 : null,
       deed: a.deed_book ? `Book ${clean(a.deed_book)}, page ${clean(a.deed_page)}` : null,
+      deedBook: clean(a.deed_book), deedPage: clean(a.deed_page),
       legal: clean(a.legaldescription),
       neighborhood: clean(a.neighborhood_description),
       landUse: clean(a.landuse_description),
@@ -69,6 +70,7 @@ function normalizeCab(f) {
       saleYear: a.SaleYear || null,
       saleMonth: a.SaleMonth || null,
       deed: a.DeedBook ? `Book ${clean(a.DeedBook)}, page ${clean(a.DeedPage)}` : null,
+      deedBook: clean(a.DeedBook), deedPage: clean(a.DeedPage),
       legal: clean(a.LegalDesc),
       neighborhood: clean(a.NBH_NAME),
       landUse: '',
@@ -159,6 +161,44 @@ export async function parcelLinesInView([w, s, e, n]) {
     ...(cab.status === 'fulfilled' ? cab.value.features || [] : []),
   ]
   return { type: 'FeatureCollection', features }
+}
+
+/**
+ * Other parcels recorded on the same deed. When a deed covers several parcels, the county
+ * repeats the full sale price on each, so the price is for the group, not one parcel.
+ * Returns null when there's nothing to check or only this parcel is on the deed.
+ */
+export async function deedGroup(parcel) {
+  const p = parcel.properties
+  if (!p.deedBook || !p.deedPage || !(p.salePrice > 0)) return null
+  const esc = (v) => v.replace(/'/g, "''")
+  const isMeck = p.county === 'Mecklenburg'
+  const d = await getJSON(`${isMeck ? MECK : CAB}/query`, {
+    where: isMeck
+      ? `deed_book = '${esc(p.deedBook)}' AND deed_page = '${esc(p.deedPage)}'`
+      : `DeedBook = '${esc(p.deedBook)}' AND DeedPage = '${esc(p.deedPage)}'`,
+    outFields: isMeck ? MECK_FIELDS : '*',
+    returnGeometry: true,
+    outSR: 4326,
+    geometryPrecision: 6,
+    resultRecordCount: 200,
+    f: 'geojson',
+  })
+  const byId = new Map()
+  for (const f of d.features || []) {
+    const n = isMeck ? normalizeMeck(f) : normalizeCab(f)
+    // Mecklenburg keeps one row per tax year; any row will do for grouping.
+    if (!byId.has(n.properties.id)) byId.set(n.properties.id, n.properties)
+  }
+  const group = [...byId.values()]
+  if (group.length < 2) return null
+  return {
+    count: group.length,
+    capped: (d.features || []).length >= 200,
+    totalAcres: group.reduce((t, x) => t + (x.acres || 0), 0),
+    totalValue: group.reduce((t, x) => t + (x.assessed || 0), 0),
+    others: group.filter((x) => x.id !== p.id).map((x) => ({ id: x.id, address: x.address, acres: x.acres })),
+  }
 }
 
 export { SQ_FT_PER_ACRE }
