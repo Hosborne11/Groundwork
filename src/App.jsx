@@ -35,6 +35,8 @@ export default function App() {
   const [saved, setSaved] = useState(loadSaved)
   const [menu, setMenu] = useState(null)
   const [petitions, setPetitions] = useState(null)
+  // set when a parcel is opened from the Rezonings list, so the outlook grades the requested district
+  const [fromPetition, setFromPetition] = useState(null)
 
   useEffect(() => {
     try { localStorage.setItem('groundwork:saved', JSON.stringify(saved)) } catch { /* storage off */ }
@@ -65,6 +67,7 @@ export default function App() {
   }, [])
 
   const flyToParcel = useCallback((feature) => {
+    setFromPetition(null)
     const [w, s, e, n] = turf.bbox(feature)
     map.current?.fitBounds([[w, s], [e, n]], { padding: { top: 90, bottom: 80, left: 80, right: 460 }, maxZoom: 17 })
     selectParcel(null, feature)
@@ -118,6 +121,7 @@ export default function App() {
       }).catch(() => {})
     })
     m.on('click', (e) => {
+      setFromPetition(null)
       selectParcel([e.lngLat.lng, e.lngLat.lat])
     })
     map.current = m
@@ -225,6 +229,7 @@ export default function App() {
             : { top: 80, bottom: 80, left: 40, right: 40 }
           map.current?.fitBounds([[w, s], [e, n]], { padding, maxZoom: 17 })
           // open the parcel at a point guaranteed to be inside the petition site
+          setFromPetition({ petition: f.properties.Petition, to: (f.properties.ReqZone || '').trim() })
           selectParcel(turf.pointOnFeature(f).geometry.coordinates)
         }}
       />
@@ -239,7 +244,7 @@ export default function App() {
       )}
 
       {selected && (
-        <ParcelPanel key={selected.properties.id} parcel={selected} isSaved={isSaved} onSave={toggleSave} onClose={closePanel} />
+        <ParcelPanel key={selected.properties.id} parcel={selected} fromPetition={fromPetition} isSaved={isSaved} onSave={toggleSave} onClose={closePanel} />
       )}
     </div>
   )

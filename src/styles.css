@@ -289,3 +289,5 @@ button { font: inherit; color: inherit; cursor: pointer; }
   .hint, .toast { bottom: 76px; left: 50%; }
   .maplibregl-ctrl-bottom-right { bottom: 62px; }
 }
+
+.petition-note { margin: 0 0 10px; padding: 8px 10px; background: #fff4dc; border-left: 3px solid #F2A81D; color: var(--ink); }

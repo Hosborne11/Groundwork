@@ -13,7 +13,7 @@ function defaultTarget(currentCode, place) {
   return (up || candidates[0] || districtByCode['N2-A']).code
 }
 
-export default function RezoningSection({ parcel, zoning, place }) {
+export default function RezoningSection({ parcel, zoning, place, fromPetition }) {
   const [history, setHistory] = useState(null)
   const [active, setActive] = useState([])
   const [rates, setRates] = useState(null)
@@ -30,8 +30,13 @@ export default function RezoningSection({ parcel, zoning, place }) {
   }, [parcel])
 
   useEffect(() => {
-    if (place !== undefined && zoning !== undefined && !target) setTarget(defaultTarget(zoning?.code, place))
-  }, [place, zoning, target])
+    if (place !== undefined && zoning !== undefined && !target) {
+      // Opened from a petition: grade the district actually requested, if it's a UDO district.
+      const requested = fromPetition && parseZoning(fromPetition.to).base
+      setTarget(requested && districtByCode[requested] ? requested : defaultTarget(zoning?.code, place))
+    }
+  }, [place, zoning, target, fromPetition])
+  const requestedBase = fromPetition && parseZoning(fromPetition.to).base
 
   const outlook = useMemo(() => {
     if (!history || !target) return null
@@ -43,6 +48,12 @@ export default function RezoningSection({ parcel, zoning, place }) {
 
   return (
     <div className="outlook">
+      {fromPetition && (
+        <p className="note petition-note">
+          Petition <strong>{fromPetition.petition}</strong> requests <strong>{fromPetition.to || 'a change'}</strong>
+          {requestedBase && !districtByCode[requestedBase] ? '. That isn\'t a UDO district, so pick one below to compare.' : '. The outlook below grades that request.'}
+        </p>
+      )}
       <label className="target">
         <span>If rezoned to</span>
         <select value={target || ''} onChange={(e) => setTarget(e.target.value)}>

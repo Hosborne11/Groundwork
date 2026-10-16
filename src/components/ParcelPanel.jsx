@@ -124,7 +124,7 @@ function CheckRow({ label, swatch, state }) {
   )
 }
 
-export default function ParcelPanel({ parcel, isSaved, onSave, onClose }) {
+export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onClose }) {
   const p = parcel.properties
   const isMeck = p.county === 'Mecklenburg'
 
@@ -182,7 +182,7 @@ export default function ParcelPanel({ parcel, isSaved, onSave, onClose }) {
       {isMeck && cltZoning && (
         <section className="section">
           <h3>Rezoning outlook</h3>
-          <RezoningSection parcel={parcel} zoning={cltZoning} place={place} />
+          <RezoningSection parcel={parcel} zoning={cltZoning} place={place} fromPetition={fromPetition} />
         </section>
       )}
 
