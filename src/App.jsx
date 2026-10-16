@@ -9,6 +9,8 @@ import { charlotteWaterLines } from './lib/charlotteWater'
 import ParcelPanel from './components/ParcelPanel'
 import Search from './components/Search'
 import SideRail from './components/SideRail'
+import CountyPicker from './components/CountyPicker'
+import { loadCounties, countyAt } from './lib/counties'
 
 const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services'
 const BASEMAPS = {
@@ -37,6 +39,9 @@ export default function App() {
   const [petitions, setPetitions] = useState(null)
   // set when a parcel is opened from the Rezonings list, so the outlook grades the requested district
   const [fromPetition, setFromPetition] = useState(null)
+  const [county, setCounty] = useState(null)
+  const countiesRef = useRef(null)
+  const keepCountyLabel = useRef(false) // true right after 'Both counties', so the fly-to doesn't relabel it
 
   useEffect(() => {
     try { localStorage.setItem('groundwork:saved', JSON.stringify(saved)) } catch { /* storage off */ }
@@ -91,12 +96,16 @@ export default function App() {
           water: { type: 'geojson', data: turf.featureCollection([]) },
           selected: { type: 'geojson', data: turf.featureCollection([]) },
           rezonings: { type: 'geojson', data: turf.featureCollection([]), attribution: 'City of Charlotte' },
+          counties: { type: 'geojson', data: turf.featureCollection([]), attribution: 'U.S. Census Bureau' },
           cltWater: { type: 'geojson', data: turf.featureCollection([]) },
           cltSewer: { type: 'geojson', data: turf.featureCollection([]), attribution: 'Charlotte Water (via rezoning reviews)' },
         },
         layers: [
           { id: 'base', type: 'raster', source: 'base' },
           { id: 'labels', type: 'raster', source: 'labels', paint: { 'raster-opacity': 0.85 } },
+          { id: 'county-casing', type: 'line', source: 'counties', paint: { 'line-color': '#1C2A33', 'line-width': 3, 'line-opacity': 0.35 } },
+          { id: 'county-line', type: 'line', source: 'counties', paint: { 'line-color': '#FFFFFF', 'line-width': 1.4, 'line-opacity': 0.75, 'line-dasharray': [3, 2] } },
+          { id: 'county-selected', type: 'line', source: 'counties', filter: ['==', ['get', 'GEOID'], ''], paint: { 'line-color': '#FFFFFF', 'line-width': ['interpolate', ['linear'], ['zoom'], 8, 2.5, 12, 4] } },
           { id: 'flood', type: 'raster', source: 'flood', layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.6 } },
           { id: 'parcels', type: 'line', source: 'parcels', minzoom: PARCEL_MIN_ZOOM, paint: { 'line-color': '#FFFFFF', 'line-opacity': 0.8, 'line-width': ['interpolate', ['linear'], ['zoom'], 15, 0.6, 18, 1.6] } },
           { id: 'water', type: 'line', source: 'water', minzoom: LINE_MIN_ZOOM, paint: { 'line-color': '#2F7DE1', 'line-width': ['interpolate', ['linear'], ['zoom'], 15, 1.5, 18, 4] } },
@@ -113,7 +122,16 @@ export default function App() {
     m.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
     m.addControl(new maplibregl.ScaleControl({ unit: 'imperial' }), 'bottom-right')
     m.on('zoomend', () => setZoom(m.getZoom()))
+    const detectCounty = () => {
+      if (keepCountyLabel.current) { keepCountyLabel.current = false; return }
+      const c = m.getCenter()
+      const id = countyAt(countiesRef.current, [c.lng, c.lat])
+      setCounty(id)
+      m.setFilter('county-selected', ['==', ['get', 'GEOID'], id || ''])
+    }
+    m.on('moveend', detectCounty)
     m.on('load', () => {
+      loadCounties().then((fc) => { countiesRef.current = fc; m.getSource('counties')?.setData(fc); detectCounty() }).catch(() => {})
       activePetitionShapes().then((d) => { m.getSource('rezonings')?.setData(d); setPetitions(d) }).catch(() => setPetitions({ features: [] }))
       charlotteWaterLines().then(({ water, sewer }) => {
         m.getSource('cltWater')?.setData(water)
@@ -181,6 +199,27 @@ export default function App() {
     return () => { m.off('moveend', refresh); clearTimeout(timer) }
   }, [layers])
 
+  const flyToCounty = (id) => {
+    const m = map.current
+    const fc = countiesRef.current
+    if (!m || !fc) return
+    const feats = id === 'all' ? fc.features : fc.features.filter((f) => f.properties.GEOID === id)
+    if (!feats.length) return
+    const [w, s, e, n] = turf.bbox(turf.featureCollection(feats))
+    const narrow = m.getContainer().clientWidth < 760
+    const padding = narrow
+      ? { top: 80, bottom: 90, left: 24, right: 24 }
+      : { top: 80, bottom: 40, left: 40 + (menu ? 320 : 0), right: selected ? 460 : 40 }
+    if (id === 'all') {
+      keepCountyLabel.current = true
+      m.setFilter('county-selected', ['in', ['get', 'GEOID'], ['literal', feats.map((f) => f.properties.GEOID)]])
+    } else {
+      m.setFilter('county-selected', ['==', ['get', 'GEOID'], id])
+    }
+    setCounty(id)
+    m.fitBounds([[w, s], [e, n]], { padding, duration: 1200 })
+  }
+
   const isSaved = !!selected && saved.some((s) => s.pin === selected.properties.id)
   const toggleSave = () => {
     if (!selected) return
@@ -203,6 +242,7 @@ export default function App() {
         <div className="brand">
           <span className="brand-name">Groundwork</span>
         </div>
+        <CountyPicker current={county} onPick={flyToCounty} />
         <Search onPick={flyToParcel} />
       </header>
 

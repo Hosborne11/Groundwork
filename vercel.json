@@ -5,6 +5,7 @@
     { "source": "/gis/fema/:path*", "destination": "https://hazards.fema.gov/arcgis/rest/services/:path*" },
     { "source": "/gis/clt/:path*", "destination": "https://gis.charlottenc.gov/arcgis/rest/services/:path*" },
     { "source": "/gis/agolclt/:path*", "destination": "https://services.arcgis.com/9Nl857LBlQVyzq54/arcgis/rest/services/:path*" },
+    { "source": "/gis/tiger/:path*", "destination": "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/:path*" },
     { "source": "/gis/sda", "destination": "https://sdmdataaccess.sc.egov.usda.gov/Tabular/post.rest" }
   ]
 }

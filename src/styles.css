@@ -174,6 +174,29 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .s-denied { color: var(--flag); }
 .np-date { color: var(--ink-3); font-size: 12px; text-align: right; }
 
+/* ---------- County picker ---------- */
+.county { position: relative; }
+.county-btn {
+  display: flex; align-items: center; gap: 8px; height: 42px; padding: 0 12px;
+  border: 1px solid var(--rule); border-radius: 6px; background: var(--card); color: var(--ink);
+  font-size: 14px; font-weight: 700; box-shadow: var(--shadow); white-space: nowrap;
+}
+.county-btn:hover { border-color: var(--ink-3); }
+.county-btn[aria-expanded="true"] { border-color: var(--ink); }
+.county-menu {
+  position: absolute; top: 48px; left: 0; z-index: 12; width: 260px; margin: 0; padding: 6px; list-style: none;
+  background: var(--card); border-radius: 8px; box-shadow: var(--shadow);
+}
+.county-menu button {
+  display: flex; flex-direction: column; gap: 1px; width: 100%; padding: 9px 10px; border: 0; border-radius: 5px;
+  background: none; text-align: left; font-size: 14px;
+}
+.county-menu button span { font-size: 12.5px; color: var(--ink-2); }
+.county-menu button:hover { background: var(--paper); }
+.county-menu button.on { background: #fbe6f1; }
+.county-menu button.on strong { color: var(--survey); }
+.county-sep { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--rule); }
+
 /* ---------- Side rail + flyout ---------- */
 .rail {
   position: absolute; top: 0; left: 0; bottom: 0; z-index: 9; width: var(--rail);
@@ -283,7 +306,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
   .rail-btn { margin: 0; padding: 6px 4px; font-size: 10.5px; flex: 1; }
   .rail-btn.on::before { left: 8px; right: 8px; top: -4px; bottom: auto; width: auto; height: 3px; border-radius: 0 0 3px 3px; }
   .flyout { top: auto; left: 0; right: 0; bottom: 62px; width: auto; max-height: 65vh; border-radius: 12px 12px 0 0; }
-  .topbar, .menu-open .topbar { left: 12px; }
+  .topbar, .menu-open .topbar { left: 12px; gap: 8px; }
+  .brand { display: none; }
+  .county-btn { padding: 0 10px; }
   .menu-open .hint { display: none; }
   .search { flex: 1; }
   .panel { top: auto; left: 0; right: 0; bottom: 62px; width: auto; max-height: 62vh; border-radius: 10px 10px 0 0; }
