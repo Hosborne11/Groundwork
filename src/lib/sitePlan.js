@@ -76,8 +76,6 @@ function layout(usable, { lotWidth, lotDepth, minLotSf, maxLots }) {
 
   // Stack blocks: [lot row][street][lot row], repeated as depth allows.
   const nBlocks = Math.max(1, Math.floor((H + 1) / (2 * lotDepth + ROW_FT)))
-  // With more than one street, a cross street at the west end ties them together.
-  const crossX = nBlocks > 1 ? minX + ROW_FT : minX
   // Deepen lots to use leftover depth instead of leaving empty strips (up to 60% deeper).
   const leftover = H - nBlocks * (2 * lotDepth + ROW_FT)
   lotDepth += Math.max(0, Math.min(leftover / (2 * nBlocks), lotDepth * 0.6))
@@ -88,19 +86,28 @@ function layout(usable, { lotWidth, lotDepth, minLotSf, maxLots }) {
     const street = clip(rect(minX, by + lotDepth, maxX, by + lotDepth + ROW_FT), usable)
     if (street) streets.push(street)
     for (const rowY of [by, by + lotDepth + ROW_FT]) {
-      for (let x = crossX; x + lotWidth <= maxX + 1; x += lotWidth) {
+      for (let x = minX; x + lotWidth <= maxX + 1; x += lotWidth) {
         const piece = clip(rect(x, rowY, x + lotWidth, rowY + lotDepth), usable)
         // keep lots that meet the minimum area and aren't slivers along a curved edge
         if (piece && areaFt(piece.geometry) >= Math.max(minLotSf, 0.6 * lotWidth * lotDepth)) lots.push(piece)
       }
     }
   }
-  if (nBlocks > 1) {
-    const firstStreetY = y0 + lotDepth, lastStreetY = y0 + (nBlocks - 1) * block + lotDepth + ROW_FT
-    const cross = clip(rect(minX, firstStreetY, crossX, lastStreetY), usable)
-    if (cross) streets.push(cross)
+  // With more than one street, a cross street ties them together. Put it where every
+  // street actually reaches (on slanted parcels the bounding-box edge is outside the land),
+  // and give up the lots it crosses.
+  let finalLots = lots
+  if (streets.length > 1) {
+    const reach = Math.max(...streets.map((st) => turf.bbox(st)[0]))
+    const yTop = Math.min(...streets.map((st) => turf.bbox(st)[1]))
+    const yBot = Math.max(...streets.map((st) => turf.bbox(st)[3]))
+    const cross = clip(rect(reach, yTop, reach + ROW_FT, yBot), usable)
+    if (cross) {
+      streets.push(cross)
+      finalLots = lots.filter((l) => { const [lx0, , lx1] = turf.bbox(l); return lx1 <= reach + 1 || lx0 >= reach + ROW_FT - 1 })
+    }
   }
-  return { lots: lots.slice(0, maxLots), streets, split: false, depth: lotDepth }
+  return { lots: finalLots.slice(0, maxLots), streets, split: false, depth: lotDepth }
 }
 
 /**
