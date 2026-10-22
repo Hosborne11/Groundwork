@@ -76,6 +76,8 @@ function layout(usable, { lotWidth, lotDepth, minLotSf, maxLots }) {
 
   // Stack blocks: [lot row][street][lot row], repeated as depth allows.
   const nBlocks = Math.max(1, Math.floor((H + 1) / (2 * lotDepth + ROW_FT)))
+  // With more than one street, a cross street at the west end ties them together.
+  const crossX = nBlocks > 1 ? minX + ROW_FT : minX
   // Deepen lots to use leftover depth instead of leaving empty strips (up to 60% deeper).
   const leftover = H - nBlocks * (2 * lotDepth + ROW_FT)
   lotDepth += Math.max(0, Math.min(leftover / (2 * nBlocks), lotDepth * 0.6))
@@ -86,12 +88,17 @@ function layout(usable, { lotWidth, lotDepth, minLotSf, maxLots }) {
     const street = clip(rect(minX, by + lotDepth, maxX, by + lotDepth + ROW_FT), usable)
     if (street) streets.push(street)
     for (const rowY of [by, by + lotDepth + ROW_FT]) {
-      for (let x = minX; x + lotWidth <= maxX + 1; x += lotWidth) {
+      for (let x = crossX; x + lotWidth <= maxX + 1; x += lotWidth) {
         const piece = clip(rect(x, rowY, x + lotWidth, rowY + lotDepth), usable)
         // keep lots that meet the minimum area and aren't slivers along a curved edge
         if (piece && areaFt(piece.geometry) >= Math.max(minLotSf, 0.6 * lotWidth * lotDepth)) lots.push(piece)
       }
     }
+  }
+  if (nBlocks > 1) {
+    const firstStreetY = y0 + lotDepth, lastStreetY = y0 + (nBlocks - 1) * block + lotDepth + ROW_FT
+    const cross = clip(rect(minX, firstStreetY, crossX, lastStreetY), usable)
+    if (cross) streets.push(cross)
   }
   return { lots: lots.slice(0, maxLots), streets, split: false, depth: lotDepth }
 }
@@ -134,7 +141,15 @@ export function sitePlan(parcel, { code, mode = 'standard', lotWidth, reservePct
     const r = layout(usableR, { lotWidth: width, lotDepth: depth, minLotSf, maxLots })
     if (!best || r.lots.length > best.lots.length) best = { ...r, ang }
   }
-  if (!best || !best.lots.length) return { error: "No lots fit with these settings. Try a narrower lot width or a smaller stormwater set-aside.", usableSf, grossSf }
+  if (!best || !best.lots.length) {
+    const floodShare = 1 - usableSf / grossSf
+    return {
+      error: floodShare > 0.5
+        ? `About ${Math.round(floodShare * 100)}% of this parcel is floodplain, which leaves too little buildable land for lots.`
+        : 'No lots fit with these settings. The parcel may be too narrow for a street with lots on both sides. Try a narrower lot width or a smaller stormwater set-aside.',
+      usableSf, grossSf,
+    }
+  }
 
   // Stormwater / open space: take whole lots from the far end until the set-aside is met.
   const needOpen = conservation ? Math.max(reservePct, 10) : reservePct
@@ -156,7 +171,8 @@ export function sitePlan(parcel, { code, mode = 'standard', lotWidth, reservePct
   const openFeats = open.map((o) => { const g = back(o); g.properties = { kind: 'open' }; return g })
   const floodFeats = floodPolys.map((f) => clip(f, parcel)).filter(Boolean).map((f) => { f.properties = { kind: 'flood' }; return f })
 
-  const streetLenFt = best.streets.reduce((t, s) => { const [x0, , x1] = turf.bbox(s); return t + (x1 - x0) }, 0)
+  // street length = long side of each street piece (the cross street runs along y)
+  const streetLenFt = best.streets.reduce((t, s) => { const [x0, y0, x1, y1] = turf.bbox(s); return t + Math.max(x1 - x0, y1 - y0) }, 0)
   const lotSfs = lotFeats.map((l) => l.properties.sf)
   return {
     district: mode === 'bonus' && base.bonusTo ? base.bonusTo : code,

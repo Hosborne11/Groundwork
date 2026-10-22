@@ -8,7 +8,7 @@ const fmt = (n) => Math.round(n).toLocaleString()
  * "Sketch site plan" for a Charlotte N1 parcel. Draws on the map through onPlan(geojson | null).
  * floodPolys: floodplain shapes from the flood check (null while still loading).
  */
-export default function SitePlanCard({ parcel, code, acres, floodPolys, onPlan }) {
+export default function SitePlanCard({ parcel, code, acres, floodPolys, floodFailed, onPlan }) {
   const std = N1[code]
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState('standard')
@@ -86,6 +86,7 @@ export default function SitePlanCard({ parcel, code, acres, floodPolys, onPlan }
       </label>
 
       {floodPolys === null && <p className="pending">Waiting for the floodplain check…</p>}
+      {floodFailed && <p className="note warn">FEMA's floodplain service didn't respond, so this sketch doesn't remove floodplain. Reopen the parcel later to try again.</p>}
       {busy && floodPolys !== null && <p className="pending">Sketching…</p>}
       {!busy && plan?.error && <p className="note warn">{plan.error}</p>}
       {!busy && plan && !plan.error && (

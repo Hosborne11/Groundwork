@@ -211,7 +211,7 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
           <h3>What you can build</h3>
           {place && <p className="place">2040 Policy Map: <strong>{place.name}</strong>{place.area ? ` · ${place.area}` : ''}</p>}
           <BuildSection zoning={cltZoning} acres={p.acres} floodPct={floodPct} />
-          {canSketch && <SitePlanCard parcel={parcel} code={zoneParts.base} acres={p.acres} floodPolys={floodPolys} onPlan={onPlan} />}
+          {canSketch && <SitePlanCard parcel={parcel} code={zoneParts.base} acres={p.acres} floodPolys={floodPolys} floodFailed={flood.status === 'error'} onPlan={onPlan} />}
         </section>
       )}
 

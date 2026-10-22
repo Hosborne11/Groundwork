@@ -61,12 +61,15 @@ async function york() {
 }
 
 /* ---------- Cabarrus: City of Concord case layer ---------- */
+// The latest update text is more specific than the status field, so check it first.
+// Concord stopped updating this layer in 2024, so nothing here is treated as in process.
 function concordStatus(status, update) {
-  const s = (status || '').trim()
-  if (/withdrawn/i.test(s)) return ['Withdrawn', 'other']
-  if (/agenda/i.test(s)) return ['On upcoming agenda', 'active']
-  if (/complete/i.test(s)) return /approv/i.test(update || '') ? ['Approved', 'approved'] : /den(ied|y)/i.test(update || '') ? ['Denied', 'other'] : ['Decided', 'other']
-  if (/post/i.test(s)) return ['Post-processing', 'other']
+  const s = (status || '').trim(), u = update || ''
+  if (/withdrawn/i.test(s) || /withdrawn/i.test(u)) return ['Withdrawn', 'other']
+  if (/\bdenied\b|\bdeny\b/i.test(u)) return ['Denied', 'other']
+  if (/approv/i.test(u)) return ['Approved', 'approved']
+  if (/agenda|tabled|post/i.test(s) || /tabled|continued/i.test(u)) return ['Last listed as pending', 'other']
+  if (/complete/i.test(s)) return ['Decided', 'other']
   return ['Status not listed', 'other']
 }
 
