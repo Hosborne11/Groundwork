@@ -138,9 +138,11 @@ export async function floodShare(parcel) {
   })
   const total = turf.area(simple)
   const byZone = {}
+  const polys = [] // floodplain shapes, kept for the site plan sketch
   for (const f of data.features || []) {
     const geom = esriToGeo(f.geometry)
     if (!geom) continue
+    if (f.attributes.SFHA_TF === 'T') polys.push(turf.feature(geom))
     const a = f.attributes
     if (a.SFHA_TF !== 'T') continue // only Special Flood Hazard Areas (A, AE, floodway...)
     let overlap = 0
@@ -154,7 +156,7 @@ export async function floodShare(parcel) {
   }
   const zones = Object.entries(byZone).map(([zone, m2]) => ({ zone, pct: Math.min(100, (m2 / total) * 100) }))
   const pct = Math.min(100, zones.reduce((s, z) => s + z.pct, 0))
-  return { pct, zones }
+  return { pct, zones, polys }
 }
 
 /* ---------- Soils (USDA Soil Data Access) ---------- */

@@ -6,6 +6,8 @@ import { charlotteWaterNear } from '../lib/charlotteWater'
 import { deedGroup } from '../lib/parcels'
 import { yorkZoning, yorkServiceProvider, yorkFutureLandUse } from '../lib/york'
 import BuildSection from './BuildSection'
+import SitePlanCard from './SitePlanCard'
+import { N1, parseZoning } from '../data/charlotteUdo'
 import RezoningSection from './RezoningSection'
 
 const money = (v) => (Number.isFinite(v) && v > 0 ? v.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }) : '—')
@@ -102,9 +104,9 @@ const cltWaterCheck = charlotteUtility('water')
 
 async function floodCheck(parcel) {
   const r = await floodShare(parcel)
-  if (r.pct < 0.5) return { pct: 0, tone: 'good', value: 'Outside 100-yr floodplain', detail: 'No FEMA special flood hazard area on the parcel' }
+  if (r.pct < 0.5) return { pct: 0, polys: [], tone: 'good', value: 'Outside 100-yr floodplain', detail: 'No FEMA special flood hazard area on the parcel' }
   const zones = r.zones.map((z) => `${z.zone} ${z.pct.toFixed(0)}%`).join(', ')
-  return { pct: r.pct, tone: r.pct > 20 ? 'flag' : 'watch', value: `${r.pct.toFixed(0)}% in floodplain`, detail: zones }
+  return { pct: r.pct, polys: r.polys, tone: r.pct > 20 ? 'flag' : 'watch', value: `${r.pct.toFixed(0)}% in floodplain`, detail: zones }
 }
 
 async function soilsCheck(parcel) {
@@ -147,7 +149,7 @@ function CheckRow({ label, swatch, state }) {
   )
 }
 
-export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onClose }) {
+export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onClose, onPlan }) {
   const p = parcel.properties
   const isMeck = p.county === 'Mecklenburg'
   const isYork = p.county === 'York'
@@ -166,6 +168,10 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
   const [copied, setCopied] = useState(false)
 
   const floodPct = flood.status === 'done' ? flood.pct : null
+  // null while the flood check runs; [] if it failed (sketch then ignores floodplain)
+  const floodPolys = flood.status === 'done' ? flood.polys || [] : flood.status === 'error' ? [] : null
+  const zoneParts = cltZoning ? parseZoning(cltZoning.code) : null
+  const canSketch = isMeck && zoneParts && N1[zoneParts.base] && !zoneParts.conditional
   const saleDate = `${p.saleMonth ? `${p.saleMonth}/` : ''}${p.saleYear || ''}`
   const sale = p.salePrice ? `${money(p.salePrice)} · ${saleDate}` : p.nominalSale ? `Nominal transfer, not a market sale · ${saleDate}` : 'No recorded sale'
 
@@ -205,6 +211,7 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
           <h3>What you can build</h3>
           {place && <p className="place">2040 Policy Map: <strong>{place.name}</strong>{place.area ? ` · ${place.area}` : ''}</p>}
           <BuildSection zoning={cltZoning} acres={p.acres} floodPct={floodPct} />
+          {canSketch && <SitePlanCard parcel={parcel} code={zoneParts.base} acres={p.acres} floodPolys={floodPolys} onPlan={onPlan} />}
         </section>
       )}
 

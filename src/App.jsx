@@ -4,7 +4,8 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import * as turf from '@turf/turf'
 import { floodTiles, linesInView } from './lib/gis'
 import { parcelAtPoint, parcelLinesInView } from './lib/parcels'
-import { activePetitionShapes } from './lib/charlotte'
+import { loadRezonings } from './lib/rezonings'
+import { COUNTIES } from './lib/counties'
 import { charlotteWaterLines } from './lib/charlotteWater'
 import ParcelPanel from './components/ParcelPanel'
 import Search from './components/Search'
@@ -36,7 +37,7 @@ export default function App() {
   const [zoom, setZoom] = useState(11)
   const [saved, setSaved] = useState(loadSaved)
   const [menu, setMenu] = useState(null)
-  const [petitions, setPetitions] = useState(null)
+  const [rezonings, setRezonings] = useState(null)
   // set when a parcel is opened from the Rezonings list, so the outlook grades the requested district
   const [fromPetition, setFromPetition] = useState(null)
   const [county, setCounty] = useState(null)
@@ -97,6 +98,7 @@ export default function App() {
           selected: { type: 'geojson', data: turf.featureCollection([]) },
           rezonings: { type: 'geojson', data: turf.featureCollection([]), attribution: 'City of Charlotte' },
           counties: { type: 'geojson', data: turf.featureCollection([]), attribution: 'U.S. Census Bureau' },
+          siteplan: { type: 'geojson', data: turf.featureCollection([]) },
           cltWater: { type: 'geojson', data: turf.featureCollection([]) },
           cltSewer: { type: 'geojson', data: turf.featureCollection([]), attribution: 'Charlotte Water (via rezoning reviews)' },
         },
@@ -112,8 +114,13 @@ export default function App() {
           { id: 'cltWater', type: 'line', source: 'cltWater', minzoom: 13, paint: { 'line-color': '#2F7DE1', 'line-width': ['interpolate', ['linear'], ['zoom'], 13, 2, 18, 5], 'line-opacity': 0.75, 'line-dasharray': [1.5, 1] } },
           { id: 'cltSewer', type: 'line', source: 'cltSewer', minzoom: 13, paint: { 'line-color': '#38A169', 'line-width': ['interpolate', ['linear'], ['zoom'], 13, 2, 18, 5], 'line-opacity': 0.75, 'line-dasharray': [1.5, 1], 'line-offset': 3 } },
           { id: 'sewer', type: 'line', source: 'sewer', minzoom: LINE_MIN_ZOOM, paint: { 'line-color': '#38A169', 'line-width': ['interpolate', ['linear'], ['zoom'], 15, 1.5, 18, 4] } },
-          { id: 'rezonings-fill', type: 'fill', source: 'rezonings', minzoom: 11, paint: { 'fill-color': '#F2A81D', 'fill-opacity': 0.18 } },
-          { id: 'rezonings-line', type: 'line', source: 'rezonings', minzoom: 11, paint: { 'line-color': '#F2A81D', 'line-width': 2, 'line-dasharray': [2, 1.5] } },
+          { id: 'rezonings-fill', type: 'fill', source: 'rezonings', minzoom: 11, filter: ['in', ['get', 'kind'], ['literal', ['active', 'approved']]], paint: { 'fill-color': ['match', ['get', 'kind'], 'active', '#F2A81D', '#A78BFA'], 'fill-opacity': 0.18 } },
+          { id: 'rezonings-line', type: 'line', source: 'rezonings', minzoom: 11, filter: ['in', ['get', 'kind'], ['literal', ['active', 'approved']]], paint: { 'line-color': ['match', ['get', 'kind'], 'active', '#F2A81D', '#A78BFA'], 'line-width': 2, 'line-dasharray': [2, 1.5] } },
+          { id: 'siteplan-fill', type: 'fill', source: 'siteplan', paint: {
+            'fill-color': ['match', ['get', 'kind'], 'lot', '#FFFFFF', 'street', '#6B7780', 'open', '#38A169', 'flood', '#5BB5D9', '#FFFFFF'],
+            'fill-opacity': ['match', ['get', 'kind'], 'lot', 0.16, 'street', 0.75, 'open', 0.45, 'flood', 0.45, 0.2],
+          } },
+          { id: 'siteplan-line', type: 'line', source: 'siteplan', filter: ['in', ['get', 'kind'], ['literal', ['lot', 'open']]], paint: { 'line-color': ['match', ['get', 'kind'], 'open', '#2F855A', '#FFFFFF'], 'line-width': 1.4 } },
           { id: 'selected-fill', type: 'fill', source: 'selected', paint: { 'fill-color': '#D6157A', 'fill-opacity': 0.14 } },
           { id: 'selected-line', type: 'line', source: 'selected', paint: { 'line-color': '#D6157A', 'line-width': 3 } },
         ],
@@ -132,7 +139,7 @@ export default function App() {
     m.on('moveend', detectCounty)
     m.on('load', () => {
       loadCounties().then((fc) => { countiesRef.current = fc; m.getSource('counties')?.setData(fc); detectCounty() }).catch(() => {})
-      activePetitionShapes().then((d) => { m.getSource('rezonings')?.setData(d); setPetitions(d) }).catch(() => setPetitions({ features: [] }))
+      loadRezonings().then((r) => { m.getSource('rezonings')?.setData(r.all); setRezonings(r) }).catch(() => {})
       charlotteWaterLines().then(({ water, sewer }) => {
         m.getSource('cltWater')?.setData(water)
         m.getSource('cltSewer')?.setData(sewer)
@@ -220,6 +227,14 @@ export default function App() {
     m.fitBounds([[w, s], [e, n]], { padding, duration: 1200 })
   }
 
+  const drawPlan = useCallback((fc) => {
+    const m = map.current
+    if (!m) return
+    m.getSource('siteplan')?.setData(fc || turf.featureCollection([]))
+    // fade the pink selection fill while a sketch is showing so the lots read clearly
+    m.setPaintProperty('selected-fill', 'fill-opacity', fc ? 0 : 0.14)
+  }, [])
+
   const isSaved = !!selected && saved.some((s) => s.pin === selected.properties.id)
   const toggleSave = () => {
     if (!selected) return
@@ -259,7 +274,8 @@ export default function App() {
         saved={saved}
         onPickSaved={(s) => { setMenu(null); flyToParcel(s.feature) }}
         onRemoveSaved={(pin) => setSaved((l) => l.filter((s) => s.pin !== pin))}
-        petitions={petitions}
+        rezonings={rezonings}
+        county={COUNTIES.find((c) => c.id === county)?.name || null}
         onPickPetition={(f) => {
           const [w, s, e, n] = turf.bbox(f)
           // leave room for the menu on the left and the parcel panel on the right
@@ -269,7 +285,8 @@ export default function App() {
             : { top: 80, bottom: 80, left: 40, right: 40 }
           map.current?.fitBounds([[w, s], [e, n]], { padding, maxZoom: 17 })
           // open the parcel at a point guaranteed to be inside the petition site
-          setFromPetition({ petition: f.properties.Petition, to: (f.properties.ReqZone || '').trim() })
+          // the rezoning outlook grades Charlotte requests; other counties just open the parcel
+          setFromPetition(f.properties.county === 'Mecklenburg' ? { petition: f.properties.caseNumber, to: f.properties.toZone } : null)
           selectParcel(turf.pointOnFeature(f).geometry.coordinates)
         }}
       />
@@ -284,7 +301,7 @@ export default function App() {
       )}
 
       {selected && (
-        <ParcelPanel key={selected.properties.id} parcel={selected} fromPetition={fromPetition} isSaved={isSaved} onSave={toggleSave} onClose={closePanel} />
+        <ParcelPanel key={selected.properties.id} parcel={selected} fromPetition={fromPetition} isSaved={isSaved} onSave={toggleSave} onClose={closePanel} onPlan={drawPlan} />
       )}
     </div>
   )
