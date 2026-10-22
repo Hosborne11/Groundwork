@@ -1,6 +1,6 @@
 const ROWS = [
   { id: 'parcels', label: 'Parcel lines', swatch: '#FFFFFF', note: 'Mecklenburg, Cabarrus, York' },
-  { id: 'rezonings', label: 'Active rezonings', swatch: '#F2A81D', note: 'Charlotte petitions in process' },
+  { id: 'rezonings', label: 'Rezonings', swatch: '#F2A81D', note: 'Orange: in process · violet: recently approved' },
   { id: 'sewer', label: 'Sewer mains', swatch: '#38A169', note: 'Concord; Charlotte as reported' },
   { id: 'water', label: 'Water mains', swatch: '#2F7DE1', note: 'Concord; Charlotte as reported' },
   { id: 'flood', label: 'FEMA flood zones', swatch: '#5BB5D9', note: '100-yr and floodway' },

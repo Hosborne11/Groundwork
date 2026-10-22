@@ -4,6 +4,7 @@ import SavedList from './SavedList'
 import ZoningKey from './ZoningKey'
 import ZoneCode from './ZoneCode'
 import { loadCharlotteWater } from '../lib/charlotteWater'
+import { SOURCE_NOTES } from '../lib/rezonings'
 
 // Simple stroke icons, drawn to match the type weight in the rail.
 const ICONS = {
@@ -32,7 +33,7 @@ const ITEMS = [
 
 export default function SideRail({
   open, setOpen, basemap, setBasemap, layers, setLayers, zoom, lineMinZoom, parcelMinZoom,
-  saved, onPickSaved, onRemoveSaved, petitions, onPickPetition,
+  saved, onPickSaved, onRemoveSaved, rezonings, county, onPickPetition,
 }) {
   const toggle = (id) => setOpen((cur) => (cur === id ? null : id))
 
@@ -74,7 +75,7 @@ export default function SideRail({
             {open === 'basemaps' && <Basemaps basemap={basemap} setBasemap={setBasemap} />}
             {open === 'layers' && <LayerPanel layers={layers} setLayers={setLayers} zoom={zoom} lineMinZoom={lineMinZoom} parcelMinZoom={parcelMinZoom} />}
             {open === 'saved' && <SavedList saved={saved} onPick={onPickSaved} onRemove={onRemoveSaved} />}
-            {open === 'rezonings' && <Rezonings petitions={petitions} onPick={onPickPetition} />}
+            {open === 'rezonings' && <Rezonings rezonings={rezonings} county={county} onPick={onPickPetition} />}
             {open === 'key' && <ZoningKey />}
             {open === 'sources' && <Sources />}
             {open === 'account' && <Account />}
@@ -102,30 +103,65 @@ function Basemaps({ basemap, setBasemap }) {
   )
 }
 
-function Rezonings({ petitions, onPick }) {
-  const [q, setQ] = useState('')
-  const list = (petitions?.features || [])
-    .map((f) => ({ f, p: f.properties }))
-    .filter(({ p }) => !q || `${p.Petition} ${p.Petitioner || ''} ${p.ReqZone || ''} ${p.ExistZone || ''}`.toLowerCase().includes(q.toLowerCase()))
-    .sort((a, b) => (b.p.Received || 0) - (a.p.Received || 0))
+const COUNTY_ORDER = ['Mecklenburg', 'Cabarrus', 'York']
+const fmtDate = (ms) => (ms ? new Date(ms).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '')
 
-  if (!petitions) return <p className="muted">Loading active petitions…</p>
+function Rezonings({ rezonings, county, onPick }) {
+  const [filter, setFilter] = useState(county || 'All')
+  const [q, setQ] = useState('')
+  // follow the county picker
+  useEffect(() => { if (county) setFilter(county) }, [county])
+
+  if (!rezonings) return <p className="muted">Loading rezoning cases…</p>
+  const counties = filter === 'All' ? COUNTY_ORDER : [filter]
+  const match = (p) => !q || [p.caseNumber, p.title, p.fromZone, p.toZone, p.toName, p.description, p.update].join(' ').toLowerCase().includes(q.toLowerCase())
+
   return (
     <>
-      <p className="flyout-note">Charlotte rezoning petitions currently in process. Select one to go to it.</p>
-      <input className="flyout-filter" type="search" placeholder="Filter by petition, petitioner, or zoning" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Filter petitions" />
-      <ul className="petition-list">
-        {list.map(({ f, p }) => (
-          <li key={p.Petition}>
-            <div className="pl-row" role="button" tabIndex={0} onClick={() => onPick(f)} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onPick(f))}>
-              <span className="pl-top"><strong>{p.Petition}</strong>{p.PetAcres ? <span>{Number(p.PetAcres).toFixed(1)} ac</span> : null}</span>
-              <span className="pl-change"><ZoneCode code={(p.ExistZone || '').trim()} /> → <ZoneCode code={(p.ReqZone || '').trim()} /></span>
-              {p.Petitioner && <span className="pl-who">{p.Petitioner}</span>}
-            </div>
-          </li>
+      <div className="chips-row" role="group" aria-label="County">
+        {['All', ...COUNTY_ORDER].map((c) => (
+          <button key={c} className={`chip-btn ${filter === c ? 'on' : ''}`} onClick={() => setFilter(c)} aria-pressed={filter === c}>{c}</button>
         ))}
-        {!list.length && <li className="muted">No petitions match.</li>}
-      </ul>
+      </div>
+      <input className="flyout-filter" type="search" placeholder="Filter by case, name, or zoning" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Filter rezoning cases" />
+
+      {counties.map((c) => {
+        const src = rezonings.byCounty[c]
+        const list = src.features.map((f) => ({ f, p: f.properties })).filter(({ p }) => match(p))
+          .sort((x, y) => (y.p.kind === 'active') - (x.p.kind === 'active') || (y.p.date || 0) - (x.p.date || 0)) // in process first, then newest
+        return (
+          <section key={c} className="rz-county">
+            {filter === 'All' && <h3>{c} County <span>{src.features.length}</span></h3>}
+            <p className="flyout-note">{SOURCE_NOTES[c]}</p>
+            {src.error && <p className="muted">{src.error}</p>}
+            <ul className="petition-list">
+              {list.slice(0, filter === 'All' ? 8 : 300).map(({ f, p }) => (
+                <li key={p.key}>
+                  <div className="pl-row" role="button" tabIndex={0} onClick={() => onPick(f)} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onPick(f))}>
+                    <span className="pl-top">
+                      <strong>{p.caseNumber}</strong>
+                      <span className={`rz-status k-${p.kind}`}>{p.status}</span>
+                    </span>
+                    <span className="pl-change">
+                      {p.county === 'Mecklenburg'
+                        ? <><ZoneCode code={p.fromZone} /> → <ZoneCode code={p.toZone} /></>
+                        : p.fromZone ? <>{p.fromZone} → {p.toZone}</>
+                        : p.toZone ? <>Rezoned to {p.toZone}{p.toName ? ` · ${p.toName}` : ''}{p.conditional ? ' (conditional)' : ''}</>
+                        : p.description}
+                    </span>
+                    <span className="pl-who">
+                      {[p.title, p.acres ? `${p.acres.toFixed(1)} ac` : null, fmtDate(p.date)].filter(Boolean).join(' · ')}
+                    </span>
+                    {p.update && <span className="pl-update">{p.update}</span>}
+                  </div>
+                </li>
+              ))}
+              {!list.length && !src.error && <li className="muted">{q ? 'No cases match.' : 'No cases to show.'}</li>}
+            </ul>
+            {filter === 'All' && list.length > 8 && <button className="link-btn" onClick={() => setFilter(c)}>Show all {list.length} in {c}</button>}
+          </section>
+        )
+      })}
     </>
   )
 }
@@ -139,7 +175,7 @@ function Sources() {
     ['York water and sewer providers', 'York County service area boundaries', 'Live'],
     ['Zoning rules', 'Charlotte UDO Article 4 (Neighborhood 1 districts)', 'Checked October 2026'],
     ['2040 place types', 'Charlotte Future 2040 Policy Map', 'Live'],
-    ['Rezoning petitions and history', 'City of Charlotte Planning', 'Live'],
+    ['Rezoning cases', 'City of Charlotte (in process), York County (approved), City of Concord (through 2024)', 'Live'],
     ['Charlotte water and sewer', 'Charlotte Water statements in rezoning staff analyses, 2022 onward', water?.generated ? `Built ${new Date(water.generated).toLocaleDateString()}` : 'Not loaded'],
     ['Concord water and sewer', 'City of Concord Utilities', 'Live'],
     ['Flood zones', 'FEMA National Flood Hazard Layer', 'Live'],
