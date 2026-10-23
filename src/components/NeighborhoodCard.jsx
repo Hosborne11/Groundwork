@@ -40,6 +40,9 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
   const [streets, setStreets] = useState(null)
   const worker = useRef(null)
   const lastId = useRef(0)
+  const watchdog = useRef(null)
+  const [stalled, setStalled] = useState(false)
+  const [retry, setRetry] = useState(0)
 
   // ---- editor state ----
   const [edit, setEdit] = useState(null) // { streets: [{ id, kind, pts }], pond, depth } once the user edits
@@ -72,6 +75,7 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
     worker.current = new Worker(new URL('../lib/draftWorker.js', import.meta.url), { type: 'module' })
     worker.current.onmessage = (e) => {
       if (e.data.id !== lastId.current) return // an older request finished late
+      clearTimeout(watchdog.current)
       const res = e.data.result
       if (res.network) {
         setEdit((cur) => {
@@ -90,8 +94,8 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
       onPlan(e.data.result.geojson || null)
       setBusy(false)
     }
-    return () => { worker.current?.terminate(); onPlan(null) }
-  }, [onPlan])
+    return () => { clearTimeout(watchdog.current); worker.current?.terminate(); onPlan(null) }
+  }, [onPlan, retry])
 
   // (re)draft when anything changes
   useEffect(() => {
@@ -102,13 +106,17 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
       const cleanMix = mix.filter((m) => m.share > 0).map((m) => ({ width: Math.max(minWidth, Number(m.width) || minWidth), share: Number(m.share) }))
       const total = cleanMix.reduce((a, m) => a + m.share, 0) || 1
       const network = edit ? { streets: edit.streets.map(({ kind, pts, sideTypes }) => ({ kind, pts, sideTypes })), pond: edit.pond, depth: edit.depth } : null
+      setStalled(false)
+      clearTimeout(watchdog.current)
+      // if the draft never comes back, stop waiting and offer a retry
+      watchdog.current = setTimeout(() => { if (id === lastId.current) { setBusy(false); setStalled(true) } }, 45000)
       worker.current.postMessage({
         id, parcel,
         opts: { code, mode, mix: cleanMix.map((m) => ({ ...m, share: (m.share / total) * 100 })), reservePct: reserve, floodPolys, streets, variant, network, removed },
       })
     }, edit ? 150 : 300)
     return () => clearTimeout(t)
-  }, [open, mode, mix, reserve, variant, floodPolys, streets, parcel, code, minWidth, edit, removed])
+  }, [open, mode, mix, reserve, variant, floodPolys, streets, parcel, code, minWidth, edit, removed, retry])
 
   // ---- editor actions ----
   const commit = useCallback((nextEdit, nextRemoved) => {
@@ -275,6 +283,11 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
       {floodPolys === null && <p className="pending">Waiting for the floodplain check…</p>}
       {floodFailed && <p className="note warn">FEMA's floodplain service didn't respond, so this draft doesn't remove floodplain.</p>}
       {busy && <p className="pending">{edit ? 'Refilling lots…' : 'Drafting the neighborhood…'}</p>}
+      {stalled && !busy && (
+        <p className="note warn">
+          The draft is taking unusually long. <button className="link-btn" onClick={() => { setStalled(false); setRetry((n) => n + 1) }}>Try again</button>
+        </p>
+      )}
       {!busy && plan?.error && <p className="note warn">{plan.error}</p>}
 
       {(!busy || edit) && ok && (
