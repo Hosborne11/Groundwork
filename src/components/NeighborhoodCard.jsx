@@ -129,6 +129,7 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
           <p className="nb-density">
             Density {fmt(plan.density, 2)} lots / acre · every lot meets the {plan.district} minimum{plan.capped ? ' · at the conservation maximum' : ''}
             {plan.spurs > 0 && <> · {plan.spurs} cul-de-sac{plan.spurs > 1 ? 's' : ''} added to reach leftover land</>}
+            {plan.absorbedAc >= 0.1 && <> · {fmt(plan.absorbedAc, 1)} ac of edge strips added to neighboring lots</>}
           </p>
 
           <div className="mix-bar" aria-hidden="true">

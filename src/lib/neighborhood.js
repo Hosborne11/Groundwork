@@ -315,6 +315,12 @@ export function neighborhoodDraft(parcel, opts) {
     const lots = []
     const accept = (ring, type) => {
       if (lots.length >= maxLots) return
+      // the strip behind the lot (up to 60% of its depth), for absorbing edge slivers later
+      const [f0, f1, b1, b0] = ring
+      const ext = (() => {
+        const d0 = norm(sub(b0, f0)), d1 = norm(sub(b1, f1)), e = 0.6 * len(sub(b0, f0))
+        try { return poly([b0, b1, add(b1, mul(d1, e)), add(b0, mul(d0, e))]) } catch { return null }
+      })()
       let piece = clip(poly(ring), B)
       if (!piece) return
       let bb = bboxOf(piece)
@@ -333,7 +339,7 @@ export function neighborhoodDraft(parcel, opts) {
         const o = clip(piece, l.f)
         if (o && areaFt(o.geometry) > 0.03 * a) return
       }
-      lots.push({ f: piece, bb, type: type.i, sf: a })
+      lots.push({ f: piece, bb, type: type.i, sf: a, ext })
     }
 
     // which lot type goes on each street side: larger lots on the outer sides
@@ -507,6 +513,29 @@ export function neighborhoodDraft(parcel, opts) {
     for (const f of floodIn) features.push(turf.feature(back(mapGeom(f.geometry, (p) => rot(p, -r.ang))), { kind: 'flood' }))
     // green space: leftover lot land not used by lots, kept when half an acre or more
     const roads = clip(unionAll(r.rows), r.U)
+
+    // Slivers (under half an acre, or narrower than ~100 ft on average) join the lots behind them,
+    // so backyards run to the property line instead of leaving odd strips.
+    const perimeter = (g) => { const rg = g.coordinates[0]; let t = 0; for (let i = 1; i < rg.length; i++) t += len(sub(rg[i], rg[i - 1])); return t }
+    const leftover = minus(r.B, ...(roads ? [roads] : []), ...lots.map((l) => l.f))
+    let absorbedSf = 0
+    if (leftover) {
+      const parts = (leftover.geometry.type === 'Polygon' ? [leftover.geometry.coordinates] : leftover.geometry.coordinates).map((c) => turf.polygon(c))
+      const slivers = parts.filter((pc) => { const a = areaFt(pc.geometry); return a < 0.5 * 43560 || (2 * a) / perimeter(pc.geometry) < 50 })
+      let sliverLand = slivers.length ? unionAll(slivers) : null
+      for (const l of lots) {
+        if (!sliverLand || !l.ext) continue
+        const take = clip(l.ext, sliverLand)
+        if (!take) continue
+        const ta = areaFt(take.geometry)
+        if (ta < 300) continue
+        const merged = unionAll([l.f, take])
+        if (!merged || merged.geometry.type !== 'Polygon') continue // only if it joins the lot cleanly
+        l.f = merged; l.sf += ta; absorbedSf += ta
+        sliverLand = minus(sliverLand, take)
+      }
+    }
+
     let greenSf = 0
     const left = minus(r.B, ...(roads ? [roads] : []), ...lots.map((l) => l.f))
     if (left) {
@@ -553,6 +582,7 @@ export function neighborhoodDraft(parcel, opts) {
       district: opts.mode === 'bonus' && base.bonusTo ? base.bonusTo : opts.code,
       variants: results.length,
       spurs: r.spurs || 0,
+      absorbedAc: absorbedSf / 43560,
       geojson: turf.featureCollection([...features, ...labels]),
     }
   }
