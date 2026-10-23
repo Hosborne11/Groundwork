@@ -166,6 +166,10 @@ export default function App() {
     })
     m.on('dblclick', (e) => { if (editorRef.current) { e.preventDefault(); editorRef.current.dblclick?.(e) } })
     m.on('mousemove', (e) => editorRef.current?.move?.(e))
+    // press-and-drag on a selected pond or park moves it instead of panning the map
+    let dragging = false
+    m.on('mousedown', (e) => { if (editorRef.current?.mousedown?.(e)) { dragging = true; m.dragPan.disable() } })
+    m.on('mouseup', (e) => { if (dragging) { dragging = false; m.dragPan.enable(); editorRef.current?.mouseup?.(e) } })
     m.on('click', (e) => {
       if (editorRef.current) { editorRef.current.click(e); return } // the site plan editor handles clicks
       setFromPetition(null)
@@ -270,8 +274,10 @@ export default function App() {
       const box = [[point.x - 5, point.y - 5], [point.x + 5, point.y + 5]]
       const st = m.queryRenderedFeatures(box, { layers: ['edit-streets-hit'] })[0]
       if (st) return { street: st.properties.id }
-      const lot = m.queryRenderedFeatures(box, { layers: ['siteplan-fill'] }).find((f) => f.properties.kind === 'lot')
-      return lot ? { lot: lot.properties.n } : null
+      const hit = m.queryRenderedFeatures(box, { layers: ['siteplan-fill'] }).find((f) => ['lot', 'pond', 'park'].includes(f.properties.kind))
+      if (!hit) return null
+      if (hit.properties.kind === 'lot') return { lot: hit.properties.n }
+      return { [hit.properties.kind]: hit.properties.id }
     },
     setCursor: (c) => { if (map.current) map.current.getCanvas().style.cursor = c },
   }), [])

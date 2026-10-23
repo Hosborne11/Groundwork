@@ -21,6 +21,23 @@ function smooth(pts, passes = 2) {
   return p
 }
 
+/** Rounded outline for hand-drawn ponds (Chaikin smoothing on a closed ring). */
+function smoothRing(pts, passes = 3) {
+  let p = pts
+  for (let k = 0; k < passes; k++) {
+    const out = []
+    for (let i = 0; i < p.length; i++) {
+      const a = p[i], b = p[(i + 1) % p.length]
+      out.push([0.75 * a[0] + 0.25 * b[0], 0.75 * a[1] + 0.25 * b[1]], [0.25 * a[0] + 0.75 * b[0], 0.25 * a[1] + 0.75 * b[1]])
+    }
+    p = out
+  }
+  return p
+}
+// move every coordinate of a shape by a lon/lat offset
+const shiftGeom = (geom, dx, dy) => JSON.parse(JSON.stringify(geom), (k, v) => (Array.isArray(v) && typeof v[0] === 'number' ? [v[0] + dx, v[1] + dy] : v))
+const SQFT_PER_M2 = 10.7639
+
 /** Default lot mix: the district's minimum frontage plus two wider options. */
 const defaultMix = (w) => [{ width: w, share: 50 }, { width: w + 20, share: 30 }, { width: w + 40, share: 20 }]
 
@@ -55,6 +72,8 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
   const live = useRef({}) // latest values for map handlers
   live.current = { edit, removed, tool, drawPts, selected, plan }
   const nextId = useRef(1)
+  const dragRef = useRef(null)
+  const [dragGeom, setDragGeom] = useState(null) // outline preview while dragging
 
   const modes = [
     { id: 'standard', label: 'Standard' },
@@ -105,7 +124,7 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
       const id = ++lastId.current
       const cleanMix = mix.filter((m) => m.share > 0).map((m) => ({ width: Math.max(minWidth, Number(m.width) || minWidth), share: Number(m.share) }))
       const total = cleanMix.reduce((a, m) => a + m.share, 0) || 1
-      const network = edit ? { streets: edit.streets.map(({ kind, pts, sideTypes }) => ({ kind, pts, sideTypes })), pond: edit.pond, depth: edit.depth } : null
+      const network = edit ? { streets: edit.streets.map(({ kind, pts, sideTypes }) => ({ kind, pts, sideTypes })), ponds: edit.ponds, parks: edit.parks, depth: edit.depth } : null
       setStalled(false)
       clearTimeout(watchdog.current)
       // if the draft never comes back, stop waiting and offer a retry
@@ -127,9 +146,26 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
   }, [])
   // when lot sizes are added or removed, the remembered per-street sizes no longer line up
   const clearSizes = () => setEdit((cur) => (cur ? { ...cur, streets: cur.streets.map(({ sideTypes, ...st }) => st) } : cur))
+  // In the editor the slider resizes the selected pond (or the first one) around its center.
+  const resizePond = (pct) => {
+    setReserve(pct)
+    const e = live.current.edit, pl = live.current.plan
+    if (!e || !e.ponds?.length || !pl?.netBuildableAc) return
+    const id = live.current.selected?.pond ?? e.ponds[0].id
+    const target = (pct / 100) * pl.netBuildableAc * 43560
+    setEdit({
+      ...e,
+      ponds: e.ponds.map((x) => {
+        if (x.id !== id) return x
+        const cur = turf.area(turf.feature(x.geom)) * SQFT_PER_M2
+        if (!cur) return x
+        return { ...x, geom: turf.transformScale(turf.feature(x.geom), Math.sqrt(target / cur)).geometry }
+      }),
+    })
+  }
   const startEditing = () => {
     if (!edit && plan?.network) {
-      setEdit({ ...plan.network, streets: plan.network.streets.map((st) => ({ ...st, id: nextId.current++ })) })
+      setEdit({ ...plan.network, streets: plan.network.streets.map((st) => ({ ...st, id: nextId.current++ })), ponds: plan.network.ponds || [], parks: plan.network.parks || [] })
     }
     setEditing(true)
     setTool('select')
@@ -146,6 +182,8 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
     const { selected: sel, edit: e, removed: rem, plan: pl } = live.current
     if (!sel || !e) return
     if (sel.street != null) commit({ ...e, streets: e.streets.filter((st) => st.id !== sel.street) })
+    else if (sel.pond != null) commit({ ...e, ponds: e.ponds.filter((x) => x.id !== sel.pond) })
+    else if (sel.park != null) commit({ ...e, parks: e.parks.filter((x) => x.id !== sel.park) })
     else if (sel.lot != null) {
       const lot = pl?.geojson.features.find((f) => f.properties.kind === 'lot' && f.properties.n === sel.lot)
       if (lot) commit(undefined, [...rem, turf.pointOnFeature(lot).geometry.coordinates])
@@ -163,9 +201,18 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
   const finishDrawing = useCallback(() => {
     const pts = live.current.drawPts.filter((p, i, a) => i === 0 || turf.distance(p, a[i - 1], { units: 'feet' }) > 5)
     setDrawPts([])
+    const e = live.current.edit
+    const t = live.current.tool
+    if (t === 'pond' || t === 'park') {
+      if (pts.length < 3) return
+      const ring = t === 'pond' ? smoothRing(pts) : pts
+      const geom = { type: 'Polygon', coordinates: [[...ring, ring[0]]] }
+      const key = t === 'pond' ? 'ponds' : 'parks'
+      commit({ ...e, [key]: [...(e[key] || []), { id: `${t[0]}${nextId.current++}`, geom }] })
+      return
+    }
     if (pts.length < 2) return
     pts[pts.length - 1] = snap(pts[pts.length - 1])
-    const e = live.current.edit
     commit({ ...e, streets: [...e.streets, { id: nextId.current++, kind: 'user', pts: smooth(pts) }] })
   }, [commit])
 
@@ -174,16 +221,43 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
     if (!editing || !editor) return
     editor.register({
       click: (ev) => {
+        if (dragRef.current?.moved) { dragRef.current = null; return } // the end of a drag, not a click
+        dragRef.current = null
         const ll = [ev.lngLat.lng, ev.lngLat.lat]
-        if (live.current.tool === 'draw') {
-          setDrawPts((d) => [...d, d.length === 0 ? snap(ll) : ll])
-        } else {
-          const hit = editor.pick(ev.point)
-          setSelected(hit)
-        }
+        const t = live.current.tool
+        if (t === 'draw') setDrawPts((d) => [...d, d.length === 0 ? snap(ll) : ll])
+        else if (t === 'pond' || t === 'park') setDrawPts((d) => [...d, ll])
+        else setSelected(editor.pick(ev.point))
       },
-      dblclick: () => { if (live.current.tool === 'draw') finishDrawing() },
-      move: (ev) => { if (live.current.tool === 'draw' && live.current.drawPts.length) setCursor([ev.lngLat.lng, ev.lngLat.lat]) },
+      dblclick: () => { if (live.current.tool !== 'select') finishDrawing() },
+      move: (ev) => {
+        const ll = [ev.lngLat.lng, ev.lngLat.lat]
+        const dr = dragRef.current
+        if (dr) { dr.moved = true; setDragGeom(shiftGeom(dr.geom, ll[0] - dr.start[0], ll[1] - dr.start[1])); return }
+        if (live.current.tool !== 'select' && live.current.drawPts.length) setCursor(ll)
+      },
+      // press on the selected pond or park to drag it
+      mousedown: (ev) => {
+        const sel = live.current.selected, e = live.current.edit
+        if (live.current.tool !== 'select' || !sel || !e) return false
+        const key = sel.pond != null ? 'ponds' : sel.park != null ? 'parks' : null
+        if (!key) return false
+        const item = e[key].find((x) => x.id === (sel.pond ?? sel.park))
+        const ll = [ev.lngLat.lng, ev.lngLat.lat]
+        if (!item || !turf.booleanPointInPolygon(ll, item.geom)) return false
+        dragRef.current = { key, id: item.id, geom: item.geom, start: ll, moved: false }
+        return true
+      },
+      mouseup: (ev) => {
+        const dr = dragRef.current
+        setDragGeom(null)
+        if (!dr || !dr.moved) { dragRef.current = null; return }
+        const ll = [ev.lngLat.lng, ev.lngLat.lat]
+        const e = live.current.edit
+        const moved = shiftGeom(dr.geom, ll[0] - dr.start[0], ll[1] - dr.start[1])
+        commit({ ...e, [dr.key]: e[dr.key].map((x) => (x.id === dr.id ? { ...x, geom: moved } : x)) })
+        setSelected({ [dr.key === 'ponds' ? 'pond' : 'park']: dr.id })
+      },
     })
     const onKey = (ev) => {
       if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '')) return
@@ -202,15 +276,18 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
     if (!editing || !editor) return
     const streetsFc = turf.featureCollection((edit?.streets || []).map((st) => turf.lineString(st.pts, { id: st.id, selected: selected?.street === st.id })))
     const draw = []
-    const line = cursor && tool === 'draw' && drawPts.length ? [...drawPts, cursor] : drawPts
+    const line = cursor && tool !== 'select' && drawPts.length ? [...drawPts, cursor] : [...drawPts]
+    if ((tool === 'pond' || tool === 'park') && line.length >= 3) line.push(line[0]) // show the closed outline
     if (line.length >= 2) draw.push(turf.lineString(line, { kind: 'draw' }))
+    const selShape = selected?.pond != null ? edit?.ponds?.find((x) => x.id === selected.pond) : selected?.park != null ? edit?.parks?.find((x) => x.id === selected.park) : null
+    if (selShape) draw.push(turf.feature(turf.polygonToLine(turf.feature(dragGeom || selShape.geom)).geometry, { kind: 'lot-sel' }))
     for (const p of drawPts) draw.push(turf.point(p, { kind: 'vertex' }))
     if (selected?.lot != null) {
       const lot = plan?.geojson?.features.find((f) => f.properties.kind === 'lot' && f.properties.n === selected.lot)
       if (lot) draw.push(turf.feature(turf.polygonToLine(lot).geometry, { kind: 'lot-sel' }))
     }
     editor.setOverlay({ streets: streetsFc, draw: turf.featureCollection(draw) })
-  }, [editing, editor, edit, selected, drawPts, cursor, tool, plan])
+  }, [editing, editor, edit, selected, drawPts, cursor, tool, plan, dragGeom])
 
   if (!std) return null
   if (!open) return <button className="btn btn-primary sketch-btn" onClick={() => setOpen(true)}>Draft a neighborhood</button>
@@ -256,24 +333,32 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
       </div>
 
       <label className="slider">
-        <span>Stormwater pond <strong>{reserve}%</strong> of buildable land{edit ? ' (fixed while editing)' : ''}</span>
-        <input type="range" min={0} max={20} step={1} value={reserve} disabled={!!edit} onChange={(e) => setReserve(Number(e.target.value))} />
+        <span>Stormwater pond <strong>{reserve}%</strong> of buildable land{edit && !edit.ponds?.length ? ' (draw a pond to size it)' : ''}</span>
+        <input type="range" min={edit ? 1 : 0} max={20} step={1} value={reserve} disabled={!!edit && !edit.ponds?.length} onChange={(e) => resizePond(Number(e.target.value))} />
       </label>
 
       {editing && (
         <div className="editor-box">
           <div className="seg" role="group" aria-label="Editing tool">
-            <button className={tool === 'select' ? 'on' : ''} onClick={() => { setTool('select'); setDrawPts([]) }} aria-pressed={tool === 'select'}>Select</button>
-            <button className={tool === 'draw' ? 'on' : ''} onClick={() => { setTool('draw'); setSelected(null) }} aria-pressed={tool === 'draw'}>Draw street</button>
+            {[['select', 'Select'], ['draw', 'Street'], ['pond', 'Pond'], ['park', 'Park']].map(([id, label]) => (
+              <button key={id} className={tool === id ? 'on' : ''} onClick={() => { setTool(id); setDrawPts([]); if (id !== 'select') setSelected(null) }} aria-pressed={tool === id}>{label}</button>
+            ))}
           </div>
           <p className="muted-small">
             {tool === 'draw'
               ? drawPts.length ? 'Click to add points. Double-click or press Enter to finish, Esc to cancel. Ending near a street connects to it.' : 'Click on the map to start a street. Starting near an existing street connects to it.'
-              : selected ? `${selected.street != null ? 'Street' : `Lot ${selected.lot}`} selected. Press Delete or use the button to remove it.` : 'Click a street or lot to select it.'}
+              : tool === 'pond' || tool === 'park'
+                ? drawPts.length ? `Click around the ${tool}'s outline. Double-click or press Enter to finish (at least 3 points).` : `Click on the map to start outlining a ${tool}. Lots will move out of its way.`
+                : selected
+                  ? selected.pond != null || selected.park != null
+                    ? `${selected.pond != null ? 'Pond' : 'Park'} selected. Drag it to move it, press Delete to remove it${selected.pond != null ? ', or use the slider above to resize it' : ''}.`
+                    : `${selected.street != null ? 'Street' : `Lot ${selected.lot}`} selected. Press Delete or use the button to remove it.`
+                  : 'Click a street, lot, pond, or park to select it.'}
           </p>
           <div className="nb-actions">
             {tool === 'draw' && drawPts.length >= 2 && <button className="btn btn-primary" onClick={finishDrawing}>Finish street</button>}
-            <button className="btn" onClick={deleteSelected} disabled={!selected}>Remove {selected?.street != null ? 'street' : selected?.lot != null ? 'lot' : 'selected'}</button>
+            {(tool === 'pond' || tool === 'park') && drawPts.length >= 3 && <button className="btn btn-primary" onClick={finishDrawing}>Finish {tool}</button>}
+            <button className="btn" onClick={deleteSelected} disabled={!selected}>Remove {selected?.street != null ? 'street' : selected?.lot != null ? 'lot' : selected?.pond != null ? 'pond' : selected?.park != null ? 'park' : 'selected'}</button>
             <button className="btn" onClick={undo} disabled={!history.length}>Undo</button>
             <button className="btn" onClick={() => { setEditing(false); setDrawPts([]); setSelected(null) }}>Done editing</button>
           </div>
@@ -296,6 +381,11 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
             <span className="nb-lots">{plan.lots}</span><span className="nb-unit">lots</span>
             <span className={`pass ${plan.pass ? 'yes' : 'no'}`}>{plan.pass ? 'PASS' : 'CHECK'}</span>
           </div>
+          {plan.conflicts?.length > 0 && (
+            <p className="note warn">
+              {plan.conflicts.length === 1 ? `A ${plan.conflicts[0]} overlaps a street.` : `${plan.conflicts.length} ponds or parks overlap streets.`} Move it or reroute the street so the plan is buildable.
+            </p>
+          )}
           <p className="nb-density">
             Density {fmt(plan.density, 2)} lots / acre · every lot meets the {plan.district} minimum{plan.capped ? ' · at the conservation maximum' : ''}
             {plan.spurs > 0 && <> · {plan.spurs} cul-de-sac{plan.spurs > 1 ? 's' : ''} added to reach leftover land</>}
@@ -317,7 +407,8 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
             <dt className="dim">Unbuildable (floodplain)</dt><dd className="dim">{fmt(plan.unbuildableAc, 2)} ac</dd>
             <dt>Road length</dt><dd>{fmt(plan.roadLenFt)} ft</dd>
             <dt>Road area</dt><dd>{fmt(plan.roadAc, 2)} ac</dd>
-            <dt>Pond</dt><dd>{fmt(plan.pondAc, 2)} ac</dd>
+            <dt>Pond{edit?.ponds?.length > 1 ? 's' : ''}</dt><dd>{fmt(plan.pondAc, 2)} ac</dd>
+            {plan.parkAc > 0 && <><dt>Parks</dt><dd>{fmt(plan.parkAc, 2)} ac</dd></>}
             <dt>Green space</dt><dd>{fmt(plan.greenAc, 2)} ac</dd>
             <dt>Open space</dt><dd>{fmt(plan.openPct, 1)}%</dd>
           </dl>

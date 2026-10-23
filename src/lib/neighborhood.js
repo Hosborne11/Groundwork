@@ -407,6 +407,7 @@ export function neighborhoodDraft(parcel, opts) {
       }
     }
     if (!lots.length) return null
+    const ponds = pond ? [{ id: 'p1', f: pond }] : []
 
     const smallest = [...types].sort((x, y) => x.width - y.width)[0] // smallest lots fill odd pieces best
     const netPts = streets.flatMap((st) => path(st.pts).pts)
@@ -531,16 +532,19 @@ export function neighborhoodDraft(parcel, opts) {
         if (!added) break
       }
     }
-    return { ang, U, B, pond, rows, lots, streets, bulbs, types, depth, spurs, lotCount: lots.length }
+    return { ang, U, B, ponds, parks: [], rows, lots, streets, bulbs, types, depth, spurs, lotCount: lots.length }
   }
 
   /* ---------- editor: lots along a given street network (no rotation) ---------- */
   function layoutFromNetwork(network, removedLL) {
     const ang = 0
     const U = usable
-    const pond = network.pond ? clip(turf.feature(mapGeom(network.pond, toFt)), U) : null
-    const B = pond ? minus(U, pond) : U
+    const toShapes = (list) => (list || []).map((x) => ({ id: x.id, f: clip(turf.feature(mapGeom(x.geom, toFt)), U) })).filter((x) => x.f)
+    const ponds = toShapes(network.ponds || (network.pond ? [{ id: 'p1', geom: network.pond }] : []))
+    const parks = toShapes(network.parks)
+    const B = (ponds.length || parks.length) ? minus(U, ...ponds.map((x) => x.f), ...parks.map((x) => x.f)) : U
     if (!B) return null
+    const pond = ponds.length ? unionAll(ponds.map((x) => x.f)) : null
     const depth = Math.max(D_MIN, Math.min(D_MAX, network.depth || 140))
     const types = mix.map((t) => ({ ...t, width: Math.max(t.width, Math.ceil(minLotSf / depth)), depth }))
     const removed = removedLL.map(toFt)
@@ -626,7 +630,7 @@ export function neighborhoodDraft(parcel, opts) {
         accept([pt(r0, t0), pt(r0, t1), pt(r1, t1), pt(r1, t0)], type)
       }
     }
-    return { ang, U, B, pond, rows, lots, streets, bulbs, types, depth, spurs: 0, lotCount: lots.length, edited: true }
+    return { ang, U, B, ponds, parks, rows, lots, streets, bulbs, types, depth, spurs: 0, lotCount: lots.length, edited: true }
   }
 
   /* ---------- build the output for the chosen orientation ---------- */
@@ -671,12 +675,19 @@ export function neighborhoodDraft(parcel, opts) {
         if (a >= 0.5 * 43560) { greenSf += a; features.push(turf.feature(back(g.geometry), { kind: 'green', label: `Green space ${(a / 43560).toFixed(2)} ac` })) }
       }
     }
-    const pondSf = r.pond ? areaFt(r.pond.geometry) : 0
-    if (r.pond) features.push(turf.feature(back(r.pond.geometry), { kind: 'pond', label: `Pond ${(pondSf / 43560).toFixed(2)} ac` }))
+    let pondSf = 0, parkSf = 0
+    for (const pd of r.ponds) {
+      const a = areaFt(pd.f.geometry); pondSf += a
+      features.push(turf.feature(back(pd.f.geometry), { kind: 'pond', id: pd.id, label: `Pond ${(a / 43560).toFixed(2)} ac` }))
+    }
+    for (const pk of r.parks) {
+      const a = areaFt(pk.f.geometry); parkSf += a
+      features.push(turf.feature(back(pk.f.geometry), { kind: 'park', id: pk.id, label: `Park ${(a / 43560).toFixed(2)} ac` }))
+    }
     if (roads) features.push(turf.feature(back(roads.geometry), { kind: 'road' }))
     lots.forEach((l, i) => features.push(turf.feature(back(l.f.geometry), { kind: 'lot', n: i + 1, type: l.type, sf: Math.round(l.sf), color: LOT_COLORS[l.type] })))
     // every shape carries its own fill color so the map style stays simple
-    const FILL = { road: '#1C2A33', pond: '#3A8DDE', green: '#38A169', flood: '#5BB5D9' }
+    const FILL = { road: '#1C2A33', pond: '#3A8DDE', green: '#38A169', park: '#2F855A', flood: '#5BB5D9' }
     for (const f of features) f.properties.fill = f.properties.kind === 'lot' ? f.properties.color : FILL[f.properties.kind] || '#FFFFFF'
     // labels (points)
     const labels = []
@@ -686,9 +697,17 @@ export function neighborhoodDraft(parcel, opts) {
     }
 
     const roadSf = roads ? areaFt(roads.geometry) : 0
+    // ponds and parks sitting on a street can't be built that way: flag them
+    const conflicts = []
+    if (roads) {
+      for (const [list, name] of [[r.ponds, 'pond'], [r.parks, 'park']]) {
+        // ignore slivers where a street just grazes the edge
+        for (const x of list) { const o = clip(x.f, roads); if (o && areaFt(o.geometry) > Math.max(1500, 0.03 * areaFt(x.f.geometry))) conflicts.push(name) }
+      }
+    }
     const roadLenFt = r.streets.reduce((t, s) => t + path(s.pts).total, 0) + r.bulbs.length * 2 * Math.PI * BULB_R * 0.5
     const counts = r.types.map((t) => ({ ...t, depth: Math.round(r.depth), lots: lots.filter((l) => l.type === t.i).length, color: LOT_COLORS[t.i] }))
-    const openSf = pondSf + greenSf + floodSf
+    const openSf = pondSf + parkSf + greenSf + floodSf
     const minActual = Math.min(...lots.map((l) => l.sf))
     return {
       lots: lots.length,
@@ -698,7 +717,9 @@ export function neighborhoodDraft(parcel, opts) {
       unbuildableAc: floodSf / 43560,
       roadLenFt: Math.round(roadLenFt),
       roadAc: roadSf / 43560,
+      conflicts,
       pondAc: pondSf / 43560,
+      parkAc: parkSf / 43560,
       greenAc: greenSf / 43560,
       openPct: (openSf / grossSf) * 100,
       density: lots.length / (grossSf / 43560),
@@ -711,7 +732,8 @@ export function neighborhoodDraft(parcel, opts) {
       absorbedAc: absorbedSf / 43560,
       network: {
         streets: r.streets.map((st) => ({ kind: st.kind, pts: st.pts.map((p) => toLL(rot(p, r.ang))), sideTypes: st.sideTypes })),
-        pond: r.pond ? mapGeom(mapGeom(r.pond.geometry, (p) => rot(p, r.ang)), toLL) : null,
+        ponds: r.ponds.map((x) => ({ id: x.id, geom: mapGeom(mapGeom(x.f.geometry, (p) => rot(p, r.ang)), toLL) })),
+        parks: r.parks.map((x) => ({ id: x.id, geom: mapGeom(mapGeom(x.f.geometry, (p) => rot(p, r.ang)), toLL) })),
         depth: r.depth,
       },
       geojson: turf.featureCollection([...features, ...labels]),
@@ -722,7 +744,7 @@ export function neighborhoodDraft(parcel, opts) {
 /** KML for Google Earth or an engineer's CAD import. */
 export function neighborhoodKml(plan, title) {
   const kml = (hex, a = 'ff') => { const h = hex.replace('#', ''); return a + h.slice(4, 6) + h.slice(2, 4) + h.slice(0, 2) }
-  const color = (p) => p.kind === 'lot' ? p.color : { road: '#1C2A33', pond: '#3A8DDE', green: '#38A169', flood: '#5BB5D9' }[p.kind] || '#FFFFFF'
+  const color = (p) => p.kind === 'lot' ? p.color : { road: '#1C2A33', pond: '#3A8DDE', green: '#38A169', park: '#2F855A', flood: '#5BB5D9' }[p.kind] || '#FFFFFF'
   const name = (p) => p.kind === 'lot' ? `Lot ${p.n} (${p.sf.toLocaleString()} sq ft)` : p.label || { road: 'Streets', flood: 'Floodplain' }[p.kind] || p.kind
   const esc = (s) => String(s).replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' })[c])
   const placemark = (f) => {
