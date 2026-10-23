@@ -126,7 +126,10 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
             <span className="nb-lots">{plan.lots}</span><span className="nb-unit">lots</span>
             <span className={`pass ${plan.pass ? 'yes' : 'no'}`}>{plan.pass ? 'PASS' : 'CHECK'}</span>
           </div>
-          <p className="nb-density">Density {fmt(plan.density, 2)} lots / acre · every lot meets the {plan.district} minimum{plan.capped ? ' · at the conservation maximum' : ''}</p>
+          <p className="nb-density">
+            Density {fmt(plan.density, 2)} lots / acre · every lot meets the {plan.district} minimum{plan.capped ? ' · at the conservation maximum' : ''}
+            {plan.spurs > 0 && <> · {plan.spurs} cul-de-sac{plan.spurs > 1 ? 's' : ''} added to reach leftover land</>}
+          </p>
 
           <div className="mix-bar" aria-hidden="true">
             {plan.counts.filter((c) => c.lots).map((c) => <span key={c.i} style={{ background: c.color, flex: c.lots }} />)}

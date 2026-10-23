@@ -181,7 +181,16 @@ export function neighborhoodDraft(parcel, opts) {
 
   const results = angles.map((ang) => layoutAt(ang)).filter((r) => r && !r.error).sort((a, b) => b.lotCount - a.lotCount)
   if (!results.length) return { error: 'No layout fit. The parcel may be too narrow for a street with lots on both sides; try smaller lots.' }
-  const pick = results[Math.min(opts.variant || 0, results.length - 1)]
+  let pick
+  if (opts.infill === false) pick = results[Math.min(opts.variant || 0, results.length - 1)]
+  else if (!opts.variant) {
+    // a layout that's weaker alone can win once leftover pieces are filled, so compare the top two
+    const finals = results.slice(0, 2).map((r) => r.redo?.() || r)
+    pick = finals.sort((a, b) => b.lotCount - a.lotCount)[0]
+  } else {
+    const chosen = results[Math.min(opts.variant, results.length - 1)]
+    pick = chosen.redo?.() || chosen
+  }
   return finish(pick)
 
   /* ---------- one orientation: try 1 or 2 street counts, keep the better ---------- */
@@ -200,13 +209,13 @@ export function neighborhoodDraft(parcel, opts) {
     if (!ns.length) ns.push({ n: 1, d: Math.max(D_MIN, Math.min(D_MAX, (H - ROW_FT) / 2)) })
     let best = null
     for (const c of ns.slice(-2)) {
-      const r = layoutN(ang, U, minX, minY, maxX, maxY, c.n, c.d)
-      if (r && (!best || r.lotCount > best.lotCount)) best = r
+      const r = layoutN(ang, U, minX, minY, maxX, maxY, c.n, c.d, false)
+      if (r && (!best || r.lotCount > best.lotCount)) best = { ...r, redo: () => layoutN(ang, U, minX, minY, maxX, maxY, c.n, c.d, true) }
     }
     return best
   }
 
-  function layoutN(ang, U, minX, minY, maxX, maxY, nTarget, depth) {
+  function layoutN(ang, U, minX, minY, maxX, maxY, nTarget, depth, infill) {
     const H = maxY - minY, W = maxX - minX
     // lots widen when needed so width x depth still meets the minimum area
     const types = mix.map((t) => ({ ...t, width: Math.max(t.width, Math.ceil(minLotSf / depth)), depth }))
@@ -293,8 +302,8 @@ export function neighborhoodDraft(parcel, opts) {
     for (const m of mains) streets.push({ kind: 'main', pts: line(m.yc, m.xa, m.xb) })
     if (connX != null) streets.push({ kind: 'connector', pts: mains.map((m) => [connX, m.yc + curve(connX)]) })
     // entrance road to the nearest point on the network
-    const netPts = streets.flatMap((s) => s.pts)
-    const tgt = netPts.reduce((b, p) => (len(sub(p, entry)) < len(sub(b, entry)) ? p : b), netPts[0])
+    const entryTargets = streets.flatMap((s) => s.pts)
+    const tgt = entryTargets.reduce((b, p) => (len(sub(p, entry)) < len(sub(b, entry)) ? p : b), entryTargets[0])
     if (len(sub(tgt, entry)) > 15) streets.push({ kind: 'entrance', pts: [entry, tgt] })
 
     // right-of-way pieces (kept separate for fast clipping)
@@ -370,7 +379,122 @@ export function neighborhoodDraft(parcel, opts) {
       }
     }
     if (!lots.length) return null
-    return { ang, U, B, pond, rows, lots, streets, bulbs, types, depth, lotCount: lots.length }
+
+    const smallest = [...types].sort((x, y) => x.width - y.width)[0] // smallest lots fill odd pieces best
+    const netPts = streets.flatMap((st) => path(st.pts).pts)
+    // ---- infill helpers ----
+    const spurTypeFor = (base, halfWidth) => {
+      const d = Math.max(D_MIN, Math.min(base.depth, halfWidth - ROW_FT / 2))
+      return { ...base, depth: d, width: Math.max(base.width, Math.ceil(minLotSf / d)) }
+    }
+    const nearestNet = (q, pts) => pts.reduce((b, p) => (len(sub(p, q)) < len(sub(b, q)) ? p : b), pts[0])
+    // spur down the piece's long axis, linked to the nearest street
+    function axisSpec(pc) {
+      const ring = pc.geometry.coordinates[0]
+      const c = ring.reduce((acc, q) => add(acc, q), [0, 0]).map((v) => v / ring.length)
+      let sxx = 0, syy = 0, sxy = 0
+      for (const q of ring) { const d = sub(q, c); sxx += d[0] * d[0]; syy += d[1] * d[1]; sxy += d[0] * d[1] }
+      const th = 0.5 * Math.atan2(2 * sxy, sxx - syy)
+      const axis = [Math.cos(th), Math.sin(th)], across = perp(axis)
+      const proj = ring.map((q) => [(q[0] - c[0]) * axis[0] + (q[1] - c[1]) * axis[1], (q[0] - c[0]) * across[0] + (q[1] - c[1]) * across[1]])
+      const tMin = Math.min(...proj.map((q) => q[0])), tMax = Math.max(...proj.map((q) => q[0]))
+      const half = (Math.max(...proj.map((q) => q[1])) - Math.min(...proj.map((q) => q[1]))) / 2
+      let pA = add(c, mul(axis, tMin)), pB = add(c, mul(axis, tMax))
+      const dNet = (q) => len(sub(nearestNet(q, netPts), q))
+      if (dNet(pB) < dNet(pA)) [pA, pB] = [pB, pA]
+      const dir = norm(sub(pB, pA))
+      const end = sub(pB, mul(dir, BULB_R + 25)), startIn = add(pA, mul(dir, ROW_FT))
+      const T = spurTypeFor(smallest, half)
+      if (len(sub(end, startIn)) < 2 * T.width) return null
+      const link = nearestNet(startIn, netPts)
+      return { pts: len(sub(link, startIn)) > 10 ? [link, startIn, end] : [startIn, end], lotFrom: startIn, end, dir, T }
+    }
+    // straight spur from the nearest street toward the piece's center
+    function raySpec(pc) {
+      const center = turf.pointOnFeature(pc).geometry.coordinates
+      const start = nearestNet(center, netPts)
+      const dir = norm(sub(center, start))
+      let lastInside = null
+      for (let t = 0; t < 3000; t += 20) {
+        const q = add(start, mul(dir, t))
+        if (turf.booleanPointInPolygon(q, pc)) lastInside = q
+        else if (lastInside) break
+      }
+      if (!lastInside) return null
+      const end = sub(lastInside, mul(dir, BULB_R + 15))
+      const T = smallest
+      if (len(sub(end, start)) < 2 * T.width + BULB_R) return null
+      return { pts: [start, end], lotFrom: add(start, mul(dir, ROW_FT)), end, dir, T }
+    }
+    // Place a spur. With dryRun it reports the lot gain and undoes everything.
+    function trySpur(sp, dryRun) {
+      const spurRow = rowPolygon(sp.pts), bulbRow = circle(sp.end, BULB_R + 5, 24)
+      if (!spurRow) return 0
+      const snapshot = lots.slice()
+      const keep = lots.filter((l) => {
+        for (const r of [spurRow, bulbRow]) { const o = clip(l.f, r); if (o && areaFt(o.geometry) > 0.05 * l.sf) return false }
+        return true
+      })
+      lots.length = 0; lots.push(...keep)
+      rows.push(spurRow, bulbRow); rowBoxes.push(bboxOf(spurRow), bboxOf(bulbRow))
+      const T = sp.T, p = path([sp.lotFrom, sp.end])
+      for (const sgn of [-1, 1]) {
+        for (let t = 0; t + T.width * 0.6 <= p.total; t += T.width) {
+          const t1 = Math.min(p.total, t + T.width)
+          const a0 = p.at(t), a1 = p.at(t1)
+          const n0 = mul(perp(p.dir(t)), sgn), n1 = mul(perp(p.dir(t1)), sgn), h = ROW_FT / 2
+          accept([add(a0, mul(n0, h)), add(a1, mul(n1, h)), add(a1, mul(n1, h + T.depth)), add(a0, mul(n0, h + T.depth))], T)
+        }
+      }
+      const r0 = BULB_R + 5, r1 = r0 + T.depth, baseAng = Math.atan2(sp.dir[1], sp.dir[0])
+      const k = Math.max(3, Math.round((Math.PI * (r0 + T.depth * 0.5)) / T.width))
+      const pt = (r, t) => [sp.end[0] + r * Math.cos(t), sp.end[1] + r * Math.sin(t)]
+      for (let j = 0; j < k; j++) {
+        const t0 = baseAng - Math.PI / 2 + (Math.PI * j) / k, t1 = baseAng - Math.PI / 2 + (Math.PI * (j + 1)) / k
+        accept([pt(r0, t0), pt(r0, t1), pt(r1, t1), pt(r1, t0)], T)
+      }
+      const gain = lots.length - snapshot.length
+      if (dryRun || gain <= 0) {
+        lots.length = 0; lots.push(...snapshot)
+        rows.splice(rows.length - 2, 2); rowBoxes.splice(rowBoxes.length - 2, 2)
+      } else {
+        streets.push({ kind: 'spur', pts: sp.pts })
+        bulbs.push({ c: sp.end, dir: sp.dir })
+        netPts.push(...path(sp.pts).pts)
+      }
+      return gain
+    }
+
+    // ---- infill pass: short cul-de-sac streets into leftover pieces ----
+    let spurs = 0
+    if (infill) {
+      const MIN_PIECE = 1.5 * 43560
+      for (let pass = 0; pass < 6; pass++) {
+        const left = minus(B, ...rows, ...lots.map((l) => l.f))
+        if (!left) break
+        const pieces = (left.geometry.type === 'Polygon' ? [left.geometry.coordinates] : left.geometry.coordinates)
+          .map((c) => turf.polygon(c)).filter((pc) => areaFt(pc.geometry) >= MIN_PIECE)
+          .sort((x, y) => areaFt(y.geometry) - areaFt(x.geometry))
+        let added = false
+        for (const pc of pieces.slice(0, 3)) {
+          // Two ways to reach into a piece; try both and keep whichever adds more lots.
+          const specs = [axisSpec(pc), raySpec(pc)].filter(Boolean)
+          let bestSpec = null, bestGain = 0
+          for (const sp of specs) {
+            const g = trySpur(sp, true)
+            if (g > bestGain) { bestGain = g; bestSpec = sp }
+          }
+          if (bestSpec) {
+            trySpur(bestSpec, false)
+            spurs++
+            added = true
+            break // recompute leftover pieces with the new street in place
+          }
+        }
+        if (!added) break
+      }
+    }
+    return { ang, U, B, pond, rows, lots, streets, bulbs, types, depth, spurs, lotCount: lots.length }
   }
 
   /* ---------- build the output for the chosen orientation ---------- */
@@ -428,6 +552,7 @@ export function neighborhoodDraft(parcel, opts) {
       capped: conservation && lots.length >= maxLots,
       district: opts.mode === 'bonus' && base.bonusTo ? base.bonusTo : opts.code,
       variants: results.length,
+      spurs: r.spurs || 0,
       geojson: turf.featureCollection([...features, ...labels]),
     }
   }
