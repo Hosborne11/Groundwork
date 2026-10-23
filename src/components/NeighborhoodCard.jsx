@@ -72,6 +72,20 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
     worker.current = new Worker(new URL('../lib/draftWorker.js', import.meta.url), { type: 'module' })
     worker.current.onmessage = (e) => {
       if (e.data.id !== lastId.current) return // an older request finished late
+      const res = e.data.result
+      if (res.network) {
+        setEdit((cur) => {
+          if (!cur) return cur
+          let changed = false
+          const streets = cur.streets.map((st, i) => {
+            const got = res.network.streets[i]?.sideTypes
+            if (!got || (st.sideTypes && st.sideTypes[-1] != null && st.sideTypes[1] != null)) return st
+            changed = true
+            return { ...st, sideTypes: got }
+          })
+          return changed ? { ...cur, streets } : cur
+        })
+      }
       setPlan(e.data.result)
       onPlan(e.data.result.geojson || null)
       setBusy(false)
@@ -87,7 +101,7 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
       const id = ++lastId.current
       const cleanMix = mix.filter((m) => m.share > 0).map((m) => ({ width: Math.max(minWidth, Number(m.width) || minWidth), share: Number(m.share) }))
       const total = cleanMix.reduce((a, m) => a + m.share, 0) || 1
-      const network = edit ? { streets: edit.streets.map(({ kind, pts }) => ({ kind, pts })), pond: edit.pond, depth: edit.depth } : null
+      const network = edit ? { streets: edit.streets.map(({ kind, pts, sideTypes }) => ({ kind, pts, sideTypes })), pond: edit.pond, depth: edit.depth } : null
       worker.current.postMessage({
         id, parcel,
         opts: { code, mode, mix: cleanMix.map((m) => ({ ...m, share: (m.share / total) * 100 })), reservePct: reserve, floodPolys, streets, variant, network, removed },
@@ -103,6 +117,8 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
     if (nextRemoved !== undefined) setRemoved(nextRemoved)
     setSelected(null)
   }, [])
+  // when lot sizes are added or removed, the remembered per-street sizes no longer line up
+  const clearSizes = () => setEdit((cur) => (cur ? { ...cur, streets: cur.streets.map(({ sideTypes, ...st }) => st) } : cur))
   const startEditing = () => {
     if (!edit && plan?.network) {
       setEdit({ ...plan.network, streets: plan.network.streets.map((st) => ({ ...st, id: nextId.current++ })) })
@@ -224,10 +240,10 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
             <label className="sr-only" htmlFor={`s${i}`}>Lot type {i + 1} share in percent</label>
             <input id={`s${i}`} type="number" min={0} max={100} step={5} value={m.share} onChange={(e) => setMixRow(i, 'share', e.target.value)} />
             <span className="unit">%</span>
-            {mix.length > 1 && <button className="mix-x" onClick={() => setMix((r) => r.filter((_, j) => j !== i))} aria-label={`Remove lot type ${i + 1}`}>×</button>}
+            {mix.length > 1 && <button className="mix-x" onClick={() => { setMix((r) => r.filter((_, j) => j !== i)); clearSizes() }} aria-label={`Remove lot type ${i + 1}`}>×</button>}
           </div>
         ))}
-        {mix.length < 3 && <button className="link-btn" onClick={() => setMix((r) => [...r, { width: (r[r.length - 1]?.width || minWidth) + 20, share: 20 }])}>+ Add lot size</button>}
+        {mix.length < 3 && <button className="link-btn" onClick={() => { setMix((r) => [...r, { width: (r[r.length - 1]?.width || minWidth) + 20, share: 20 }]); clearSizes() }}>+ Add lot size</button>}
         <p className="muted-small">Minimum frontage here is {minWidth} ft. Lot depth is fitted to the site, and lots widen where needed to meet the {fmt(mode === 'conservation' ? std.minLotSf / 2 : active.minLotSf)} sq ft minimum.</p>
       </div>
 

@@ -390,7 +390,10 @@ export function neighborhoodDraft(parcel, opts) {
     // mains first so their lots claim space before the connector and loops
     sides.sort((x, y) => (x.st.kind === 'main' ? 0 : 1) - (y.st.kind === 'main' ? 0 : 1))
     accept.minLot = minLotSf
-    for (const sd of sides) fillAlong(path(sd.st.pts), sd.sgn, sd.type, accept)
+    for (const sd of sides) {
+      sd.st.sideTypes = { ...(sd.st.sideTypes || {}), [sd.sgn]: sd.type.i } // remembered so edits don't reshuffle sizes
+      fillAlong(path(sd.st.pts), sd.sgn, sd.type, accept)
+    }
     // pie-shaped lots around each cul-de-sac (the half facing away from the street)
     for (const bl of bulbs) {
       const type = order[0]
@@ -492,7 +495,7 @@ export function neighborhoodDraft(parcel, opts) {
         lots.length = 0; lots.push(...snapshot)
         rows.splice(rows.length - 2, 2); rowBoxes.splice(rowBoxes.length - 2, 2)
       } else {
-        streets.push({ kind: 'spur', pts: sp.pts })
+        streets.push({ kind: 'spur', pts: sp.pts, sideTypes: { '-1': sp.T.i, 1: sp.T.i } })
         bulbs.push({ c: sp.end, dir: sp.dir })
         netPts.push(...path(sp.pts).pts)
       }
@@ -541,7 +544,7 @@ export function neighborhoodDraft(parcel, opts) {
     const depth = Math.max(D_MIN, Math.min(D_MAX, network.depth || 140))
     const types = mix.map((t) => ({ ...t, width: Math.max(t.width, Math.ceil(minLotSf / depth)), depth }))
     const removed = removedLL.map(toFt)
-    const streets = network.streets.filter((st) => st.pts.length >= 2).map((st) => ({ kind: st.kind, pts: st.pts.map(toFt) }))
+    const streets = network.streets.filter((st) => st.pts.length >= 2).map((st) => ({ kind: st.kind, pts: st.pts.map(toFt), sideTypes: st.sideTypes ? { ...st.sideTypes } : undefined }))
     if (!streets.length) return null
 
     // dead ends get cul-de-sacs, unless they connect to another street or exit at the parcel edge
@@ -591,22 +594,25 @@ export function neighborhoodDraft(parcel, opts) {
       return true
     }
 
-    // lot sizes by street side, larger lots on the longest streets
+    // Lot sizes by street side. Sides keep the size they were given (so editing one street doesn't
+    // reshuffle the rest); new sides get whichever size is furthest below its share of the mix.
     const sides = []
     streets.forEach((st) => { if (st.kind === 'entrance') return; for (const sgn of [-1, 1]) sides.push({ st, sgn, L: path(st.pts).total }) })
-    sides.sort((x, y) => y.L - x.L)
+    const order = [...types].sort((x, y) => y.width - x.width)
+    const byIndex = Object.fromEntries(types.map((t) => [t.i, t]))
+    const totalL = sides.reduce((t, x) => t + x.L, 0) || 1
+    const used = Object.fromEntries(types.map((t) => [t.i, 0]))
+    for (const sd of sides) {
+      const known = sd.st.sideTypes?.[sd.sgn]
+      if (known != null && byIndex[known]) { sd.type = byIndex[known]; used[known] += sd.L }
+    }
+    for (const sd of [...sides].filter((x) => !x.type).sort((a, b) => b.L - a.L)) {
+      sd.type = types.reduce((best, t) => ((t.share / 100) * totalL - used[t.i] > (best.share / 100) * totalL - used[best.i] ? t : best), types[0])
+      used[sd.type.i] += sd.L
+      sd.st.sideTypes = { ...(sd.st.sideTypes || {}), [sd.sgn]: sd.type.i }
+    }
     // Through streets claim their lots first; short connectors and loops fill in after (same as the draft).
     const PRIORITY = { main: 0, user: 0, spur: 1, connector: 2, loop: 2 }
-    const order = [...types].sort((x, y) => y.width - x.width)
-    const totalL = sides.reduce((t, x) => t + x.L, 0) || 1
-    let acc = 0
-    for (const sd of sides) {
-      const mid = ((acc + sd.L / 2) / totalL) * 100
-      let c = 0
-      sd.type = order[order.length - 1]
-      for (const t of order) { c += t.share; if (mid <= c) { sd.type = t; break } }
-      acc += sd.L
-    }
     const fillOrder = [...sides].sort((x, y) => (PRIORITY[x.st.kind] ?? 1) - (PRIORITY[y.st.kind] ?? 1))
     accept.minLot = minLotSf
     for (const sd of fillOrder) fillAlong(path(sd.st.pts), sd.sgn, sd.type, accept)
@@ -704,7 +710,7 @@ export function neighborhoodDraft(parcel, opts) {
       spurs: r.spurs || 0,
       absorbedAc: absorbedSf / 43560,
       network: {
-        streets: r.streets.map((st) => ({ kind: st.kind, pts: st.pts.map((p) => toLL(rot(p, r.ang))) })),
+        streets: r.streets.map((st) => ({ kind: st.kind, pts: st.pts.map((p) => toLL(rot(p, r.ang))), sideTypes: st.sideTypes })),
         pond: r.pond ? mapGeom(mapGeom(r.pond.geometry, (p) => rot(p, r.ang)), toLL) : null,
         depth: r.depth,
       },
