@@ -88,6 +88,7 @@ export default function App() {
       maxBounds: [[-81.8, 34.55], [-79.8, 35.9]],
       style: {
         version: 8,
+        glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
         sources: {
           base: { type: 'raster', tiles: BASEMAPS.imagery, tileSize: 256, attribution: 'Esri, Maxar, Earthstar Geographics' },
           labels: { type: 'raster', tiles: [`${ESRI}/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}`], tileSize: 256 },
@@ -99,6 +100,8 @@ export default function App() {
           rezonings: { type: 'geojson', data: turf.featureCollection([]), attribution: 'City of Charlotte' },
           counties: { type: 'geojson', data: turf.featureCollection([]), attribution: 'U.S. Census Bureau' },
           siteplan: { type: 'geojson', data: turf.featureCollection([]) },
+          // labels get their own source: if the label font server is unreachable, only labels fail, not the plan
+          siteplanLabels: { type: 'geojson', data: turf.featureCollection([]) },
           cltWater: { type: 'geojson', data: turf.featureCollection([]) },
           cltSewer: { type: 'geojson', data: turf.featureCollection([]), attribution: 'Charlotte Water (via rezoning reviews)' },
         },
@@ -116,11 +119,17 @@ export default function App() {
           { id: 'sewer', type: 'line', source: 'sewer', minzoom: LINE_MIN_ZOOM, paint: { 'line-color': '#38A169', 'line-width': ['interpolate', ['linear'], ['zoom'], 15, 1.5, 18, 4] } },
           { id: 'rezonings-fill', type: 'fill', source: 'rezonings', minzoom: 11, filter: ['in', ['get', 'kind'], ['literal', ['active', 'approved']]], paint: { 'fill-color': ['match', ['get', 'kind'], 'active', '#F2A81D', '#A78BFA'], 'fill-opacity': 0.18 } },
           { id: 'rezonings-line', type: 'line', source: 'rezonings', minzoom: 11, filter: ['in', ['get', 'kind'], ['literal', ['active', 'approved']]], paint: { 'line-color': ['match', ['get', 'kind'], 'active', '#F2A81D', '#A78BFA'], 'line-width': 2, 'line-dasharray': [2, 1.5] } },
-          { id: 'siteplan-fill', type: 'fill', source: 'siteplan', paint: {
-            'fill-color': ['match', ['get', 'kind'], 'lot', '#FFFFFF', 'street', '#6B7780', 'open', '#38A169', 'flood', '#5BB5D9', '#FFFFFF'],
-            'fill-opacity': ['match', ['get', 'kind'], 'lot', 0.16, 'street', 0.75, 'open', 0.45, 'flood', 0.45, 0.2],
+          { id: 'siteplan-fill', type: 'fill', source: 'siteplan', filter: ['!=', ['geometry-type'], 'Point'], paint: {
+            'fill-color': ['to-color', ['get', 'fill'], '#FFFFFF'],
+            'fill-opacity': ['match', ['get', 'kind'], 'lot', 0.72, 'road', 0.92, 'pond', 0.85, 'green', 0.4, 'flood', 0.45, 0.3],
           } },
-          { id: 'siteplan-line', type: 'line', source: 'siteplan', filter: ['in', ['get', 'kind'], ['literal', ['lot', 'open']]], paint: { 'line-color': ['match', ['get', 'kind'], 'open', '#2F855A', '#FFFFFF'], 'line-width': 1.4 } },
+          { id: 'siteplan-line', type: 'line', source: 'siteplan', filter: ['==', ['get', 'kind'], 'lot'], paint: { 'line-color': '#FFFFFF', 'line-width': 1 } },
+          { id: 'siteplan-lot-labels', type: 'symbol', source: 'siteplanLabels', minzoom: 16, filter: ['==', ['get', 'kind'], 'lot-label'],
+            layout: { 'text-field': ['get', 'label'], 'text-font': ['Open Sans Semibold'], 'text-size': 10, 'text-allow-overlap': false },
+            paint: { 'text-color': '#1C2A33', 'text-halo-color': 'rgba(255,255,255,0.6)', 'text-halo-width': 1 } },
+          { id: 'siteplan-area-labels', type: 'symbol', source: 'siteplanLabels', minzoom: 14.5, filter: ['==', ['get', 'kind'], 'area-label'],
+            layout: { 'text-field': ['get', 'label'], 'text-font': ['Open Sans Semibold'], 'text-size': 11 },
+            paint: { 'text-color': '#FFFFFF', 'text-halo-color': 'rgba(28,42,51,0.8)', 'text-halo-width': 1.4 } },
           { id: 'selected-fill', type: 'fill', source: 'selected', paint: { 'fill-color': '#D6157A', 'fill-opacity': 0.14 } },
           { id: 'selected-line', type: 'line', source: 'selected', paint: { 'line-color': '#D6157A', 'line-width': 3 } },
         ],
@@ -230,7 +239,9 @@ export default function App() {
   const drawPlan = useCallback((fc) => {
     const m = map.current
     if (!m) return
-    m.getSource('siteplan')?.setData(fc || turf.featureCollection([]))
+    const feats = fc?.features || []
+    m.getSource('siteplan')?.setData(turf.featureCollection(feats.filter((f) => f.geometry.type !== 'Point')))
+    m.getSource('siteplanLabels')?.setData(turf.featureCollection(feats.filter((f) => f.geometry.type === 'Point')))
     // fade the pink selection fill while a sketch is showing so the lots read clearly
     m.setPaintProperty('selected-fill', 'fill-opacity', fc ? 0 : 0.14)
   }, [])

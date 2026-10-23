@@ -177,3 +177,15 @@ export async function activePetitionShapes() {
     f: 'geojson',
   })
 }
+
+/** Existing street centerlines near a parcel (for placing a neighborhood entrance). */
+export async function nearbyStreets(parcel, feet = 500) {
+  const [w, s, e, n] = turf.bbox(parcel)
+  const dLat = feet / 364000, dLng = dLat / Math.cos((((s + n) / 2) * Math.PI) / 180)
+  const d = await getJSON('/gis/clt/CountyData/Streets/MapServer/0/query', {
+    geometry: [w - dLng, s - dLat, e + dLng, n + dLat].join(','),
+    geometryType: 'esriGeometryEnvelope', inSR: 4326, spatialRel: 'esriSpatialRelIntersects',
+    outFields: 'STREETNAME', returnGeometry: true, outSR: 4326, f: 'json',
+  })
+  return (d.features || []).filter((f) => f.geometry?.paths?.length).map((f) => turf.multiLineString(f.geometry.paths, { name: f.attributes.STREETNAME }))
+}

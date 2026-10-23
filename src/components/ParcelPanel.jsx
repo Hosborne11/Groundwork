@@ -6,7 +6,7 @@ import { charlotteWaterNear } from '../lib/charlotteWater'
 import { deedGroup } from '../lib/parcels'
 import { yorkZoning, yorkServiceProvider, yorkFutureLandUse } from '../lib/york'
 import BuildSection from './BuildSection'
-import SitePlanCard from './SitePlanCard'
+import NeighborhoodCard from './NeighborhoodCard'
 import { N1, parseZoning } from '../data/charlotteUdo'
 import RezoningSection from './RezoningSection'
 
@@ -211,7 +211,7 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
           <h3>What you can build</h3>
           {place && <p className="place">2040 Policy Map: <strong>{place.name}</strong>{place.area ? ` · ${place.area}` : ''}</p>}
           <BuildSection zoning={cltZoning} acres={p.acres} floodPct={floodPct} />
-          {canSketch && <SitePlanCard parcel={parcel} code={zoneParts.base} acres={p.acres} floodPolys={floodPolys} floodFailed={flood.status === 'error'} onPlan={onPlan} />}
+          {canSketch && <NeighborhoodCard parcel={parcel} code={zoneParts.base} acres={p.acres} floodPolys={floodPolys} floodFailed={flood.status === 'error'} onPlan={onPlan} />}
         </section>
       )}
 
