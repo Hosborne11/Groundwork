@@ -119,6 +119,26 @@ function rowPolygon(points, width = ROW_FT) {
 }
 const circle = (c, r, n = 32) => poly(Array.from({ length: n }, (_, i) => { const t = (2 * Math.PI * i) / n; return [c[0] + r * Math.cos(t), c[1] + r * Math.sin(t)] }))
 
+/** Walk a street placing lots on one side; a lot just under the minimum is retried a bit wider. */
+function fillAlong(p, sgn, type, accept, startAt = 0) {
+  const h = ROW_FT / 2
+  const quad = (t, w) => {
+    const t1 = Math.min(p.total, t + w)
+    const a0 = p.at(t), a1 = p.at(t1)
+    const n0 = mul(perp(p.dir(t)), sgn), n1 = mul(perp(p.dir(t1)), sgn)
+    return [add(a0, mul(n0, h)), add(a1, mul(n1, h)), add(a1, mul(n1, h + type.depth)), add(a0, mul(n0, h + type.depth))]
+  }
+  let t = startAt
+  while (t + type.width * 0.6 <= p.total) {
+    const res = accept(quad(t, type.width), type)
+    if (typeof res === 'number') {
+      const w2 = Math.ceil(type.width * Math.min(1.25, (accept.minLot / res) * 1.03)) // just wide enough to clear the minimum
+      if (t + w2 * 0.6 <= p.total && accept(quad(t, w2), type) === true) { t += w2; continue }
+    }
+    t += type.width
+  }
+}
+
 /* ---------------- the draft ---------------- */
 
 /**
@@ -179,7 +199,14 @@ export function neighborhoodDraft(parcel, opts) {
   for (let i = 1; i < ring.length; i++) edges.push({ l: len(sub(ring[i], ring[i - 1])), a: Math.atan2(ring[i][1] - ring[i - 1][1], ring[i][0] - ring[i - 1][0]) })
   const angles = [...new Set(edges.sort((a, b) => b.l - a.l).slice(0, 3).flatMap((e) => [e.a, e.a + Math.PI / 2]).map((a) => Math.round(a * 100) / 100))].slice(0, 4)
 
-  const results = angles.map((ang) => layoutAt(ang)).filter((r) => r && !r.error).sort((a, b) => b.lotCount - a.lotCount)
+  let results = [] // alternate layouts (none in editor mode)
+  // Editor mode: fill lots along a street network the user has shaped.
+  if (opts.network) {
+    const r = layoutFromNetwork(opts.network, opts.removed || [])
+    return r ? finish(r) : { error: 'No lots fit along these streets. Try adding a street through the open land.' }
+  }
+
+  results = angles.map((ang) => layoutAt(ang)).filter((r) => r && !r.error).sort((a, b) => b.lotCount - a.lotCount)
   if (!results.length) return { error: 'No layout fit. The parcel may be too narrow for a street with lots on both sides; try smaller lots.' }
   let pick
   if (opts.infill === false) pick = results[Math.min(opts.variant || 0, results.length - 1)]
@@ -332,7 +359,7 @@ export function neighborhoodDraft(parcel, opts) {
       // keep the largest piece if a street cut the lot in two
       if (piece.geometry.type === 'MultiPolygon') piece = piece.geometry.coordinates.map((c) => turf.polygon(c)).sort((x, y) => areaFt(y.geometry) - areaFt(x.geometry))[0]
       const a = areaFt(piece.geometry)
-      if (a < minLotSf || a < 0.6 * type.width * type.depth) return
+      if (a < minLotSf || a < 0.6 * type.width * type.depth) return a >= 0.8 * minLotSf ? a : false
       bb = bboxOf(piece)
       for (const l of lots) {
         if (!boxesTouch(bb, l.bb)) continue
@@ -340,6 +367,7 @@ export function neighborhoodDraft(parcel, opts) {
         if (o && areaFt(o.geometry) > 0.03 * a) return
       }
       lots.push({ f: piece, bb, type: type.i, sf: a, ext })
+      return true
     }
 
     // which lot type goes on each street side: larger lots on the outer sides
@@ -361,17 +389,8 @@ export function neighborhoodDraft(parcel, opts) {
     }
     // mains first so their lots claim space before the connector and loops
     sides.sort((x, y) => (x.st.kind === 'main' ? 0 : 1) - (y.st.kind === 'main' ? 0 : 1))
-    for (const sd of sides) {
-      const p = path(sd.st.pts)
-      const { width: w, depth: d } = sd.type
-      for (let t = 0; t + w * 0.6 <= p.total; t += w) {
-        const t1 = Math.min(p.total, t + w)
-        const a0 = p.at(t), a1 = p.at(t1)
-        const n0 = mul(perp(p.dir(t)), sd.sgn), n1 = mul(perp(p.dir(t1)), sd.sgn)
-        const h = ROW_FT / 2
-        accept([add(a0, mul(n0, h)), add(a1, mul(n1, h)), add(a1, mul(n1, h + d)), add(a0, mul(n0, h + d))], sd.type)
-      }
-    }
+    accept.minLot = minLotSf
+    for (const sd of sides) fillAlong(path(sd.st.pts), sd.sgn, sd.type, accept)
     // pie-shaped lots around each cul-de-sac (the half facing away from the street)
     for (const bl of bulbs) {
       const type = order[0]
@@ -437,10 +456,19 @@ export function neighborhoodDraft(parcel, opts) {
       const spurRow = rowPolygon(sp.pts), bulbRow = circle(sp.end, BULB_R + 5, 24)
       if (!spurRow) return 0
       const snapshot = lots.slice()
-      const keep = lots.filter((l) => {
-        for (const r of [spurRow, bulbRow]) { const o = clip(l.f, r); if (o && areaFt(o.geometry) > 0.05 * l.sf) return false }
-        return true
-      })
+      // lots the new street crosses: drop them, or trim them if only nicked and still big enough
+      const keep = []
+      for (const l of lots) {
+        let f = l.f, cut = false
+        for (const r of [spurRow, bulbRow]) {
+          const o = clip(f, r)
+          if (o && areaFt(o.geometry) > 1) { f = minus(f, r); cut = true; if (!f) break }
+        }
+        if (!cut) { keep.push(l); continue }
+        if (!f || f.geometry.type !== 'Polygon') continue
+        const a = areaFt(f.geometry)
+        if (a >= minLotSf) keep.push({ ...l, f, sf: a, bb: bboxOf(f) })
+      }
       lots.length = 0; lots.push(...keep)
       rows.push(spurRow, bulbRow); rowBoxes.push(bboxOf(spurRow), bboxOf(bulbRow))
       const T = sp.T, p = path([sp.lotFrom, sp.end])
@@ -501,6 +529,98 @@ export function neighborhoodDraft(parcel, opts) {
       }
     }
     return { ang, U, B, pond, rows, lots, streets, bulbs, types, depth, spurs, lotCount: lots.length }
+  }
+
+  /* ---------- editor: lots along a given street network (no rotation) ---------- */
+  function layoutFromNetwork(network, removedLL) {
+    const ang = 0
+    const U = usable
+    const pond = network.pond ? clip(turf.feature(mapGeom(network.pond, toFt)), U) : null
+    const B = pond ? minus(U, pond) : U
+    if (!B) return null
+    const depth = Math.max(D_MIN, Math.min(D_MAX, network.depth || 140))
+    const types = mix.map((t) => ({ ...t, width: Math.max(t.width, Math.ceil(minLotSf / depth)), depth }))
+    const removed = removedLL.map(toFt)
+    const streets = network.streets.filter((st) => st.pts.length >= 2).map((st) => ({ kind: st.kind, pts: st.pts.map(toFt) }))
+    if (!streets.length) return null
+
+    // dead ends get cul-de-sacs, unless they connect to another street or exit at the parcel edge
+    const boundary = turf.polygonToLine(U)
+    const edgeLines = (boundary.type === 'FeatureCollection' ? boundary.features : [boundary]).flatMap((f) => (f.geometry.type === 'LineString' ? [f.geometry.coordinates] : f.geometry.coordinates))
+    const distToLine = (q, line) => { let d = Infinity; for (let j = 1; j < line.length; j++) d = Math.min(d, segDist(q, line[j - 1], line[j])); return d }
+    const bulbs = []
+    streets.forEach((st, i) => {
+      for (const atEnd of [false, true]) {
+        const e = atEnd ? st.pts[st.pts.length - 1] : st.pts[0]
+        const prev = atEnd ? st.pts[st.pts.length - 2] : st.pts[1]
+        const joins = streets.some((o, j) => j !== i && distToLine(e, path(o.pts).pts) < 30)
+        const atEdge = edgeLines.some((l) => distToLine(e, l) < 30) // a street that actually exits the parcel
+        if (!joins && !atEdge) bulbs.push({ c: e, dir: norm(sub(e, prev)) })
+      }
+    })
+
+    const rows = streets.map((st) => rowPolygon(st.pts)).filter(Boolean) // same street edges as the draft
+    for (const b of bulbs) rows.push(pond ? (minus(circle(b.c, BULB_R + 5, 24), pond) || circle(b.c, BULB_R + 5, 24)) : circle(b.c, BULB_R + 5, 24))
+    const rowBoxes = rows.map(bboxOf)
+
+    const lots = []
+    const accept = (ring, type) => {
+      if (lots.length >= maxLots) return
+      const [f0, f1, b1, b0] = ring
+      const ext = (() => { const d0 = norm(sub(b0, f0)), d1 = norm(sub(b1, f1)), e = 0.6 * len(sub(b0, f0)); try { return poly([b0, b1, add(b1, mul(d1, e)), add(b0, mul(d0, e))]) } catch { return null } })()
+      let piece = clip(poly(ring), B)
+      if (!piece) return
+      let bb = bboxOf(piece)
+      for (let k = 0; k < rows.length; k++) {
+        if (!boxesTouch(bb, rowBoxes[k])) continue
+        const o = clip(piece, rows[k])
+        if (o && areaFt(o.geometry) > 1) { piece = minus(piece, rows[k]); if (!piece) return; bb = bboxOf(piece) }
+      }
+      if (piece.geometry.type === 'MultiPolygon') piece = piece.geometry.coordinates.map((c) => turf.polygon(c)).sort((x, y) => areaFt(y.geometry) - areaFt(x.geometry))[0]
+      const a = areaFt(piece.geometry)
+      if (a < minLotSf || a < 0.6 * type.width * type.depth) return a >= 0.8 * minLotSf ? a : false
+      // lots the user removed stay removed
+      if (removed.some((q) => turf.booleanPointInPolygon(q, piece))) return
+      bb = bboxOf(piece)
+      for (const l of lots) {
+        if (!boxesTouch(bb, l.bb)) continue
+        const o = clip(piece, l.f)
+        if (o && areaFt(o.geometry) > 0.03 * a) return
+      }
+      lots.push({ f: piece, bb, type: type.i, sf: a, ext })
+      return true
+    }
+
+    // lot sizes by street side, larger lots on the longest streets
+    const sides = []
+    streets.forEach((st) => { if (st.kind === 'entrance') return; for (const sgn of [-1, 1]) sides.push({ st, sgn, L: path(st.pts).total }) })
+    sides.sort((x, y) => y.L - x.L)
+    // Through streets claim their lots first; short connectors and loops fill in after (same as the draft).
+    const PRIORITY = { main: 0, user: 0, spur: 1, connector: 2, loop: 2 }
+    const order = [...types].sort((x, y) => y.width - x.width)
+    const totalL = sides.reduce((t, x) => t + x.L, 0) || 1
+    let acc = 0
+    for (const sd of sides) {
+      const mid = ((acc + sd.L / 2) / totalL) * 100
+      let c = 0
+      sd.type = order[order.length - 1]
+      for (const t of order) { c += t.share; if (mid <= c) { sd.type = t; break } }
+      acc += sd.L
+    }
+    const fillOrder = [...sides].sort((x, y) => (PRIORITY[x.st.kind] ?? 1) - (PRIORITY[y.st.kind] ?? 1))
+    accept.minLot = minLotSf
+    for (const sd of fillOrder) fillAlong(path(sd.st.pts), sd.sgn, sd.type, accept)
+    for (const bl of bulbs) {
+      const type = order[order.length - 1]
+      const r0 = BULB_R + 5, r1 = r0 + type.depth, baseAng = Math.atan2(bl.dir[1], bl.dir[0])
+      const k = Math.max(3, Math.round((Math.PI * (r0 + type.depth * 0.5)) / type.width))
+      const pt = (r, t) => [bl.c[0] + r * Math.cos(t), bl.c[1] + r * Math.sin(t)]
+      for (let j = 0; j < k; j++) {
+        const t0 = baseAng - Math.PI / 2 + (Math.PI * j) / k, t1 = baseAng - Math.PI / 2 + (Math.PI * (j + 1)) / k
+        accept([pt(r0, t0), pt(r0, t1), pt(r1, t1), pt(r1, t0)], type)
+      }
+    }
+    return { ang, U, B, pond, rows, lots, streets, bulbs, types, depth, spurs: 0, lotCount: lots.length, edited: true }
   }
 
   /* ---------- build the output for the chosen orientation ---------- */
@@ -583,6 +703,11 @@ export function neighborhoodDraft(parcel, opts) {
       variants: results.length,
       spurs: r.spurs || 0,
       absorbedAc: absorbedSf / 43560,
+      network: {
+        streets: r.streets.map((st) => ({ kind: st.kind, pts: st.pts.map((p) => toLL(rot(p, r.ang))) })),
+        pond: r.pond ? mapGeom(mapGeom(r.pond.geometry, (p) => rot(p, r.ang)), toLL) : null,
+        depth: r.depth,
+      },
       geojson: turf.featureCollection([...features, ...labels]),
     }
   }

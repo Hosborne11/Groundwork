@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import * as turf from '@turf/turf'
@@ -42,7 +42,8 @@ export default function App() {
   const [fromPetition, setFromPetition] = useState(null)
   const [county, setCounty] = useState(null)
   const countiesRef = useRef(null)
-  const keepCountyLabel = useRef(false) // true right after 'Both counties', so the fly-to doesn't relabel it
+  const keepCountyLabel = useRef(false)
+  const editorRef = useRef(null) // set while the site plan editor is active; map clicks go to it // true right after 'Both counties', so the fly-to doesn't relabel it
 
   useEffect(() => {
     try { localStorage.setItem('groundwork:saved', JSON.stringify(saved)) } catch { /* storage off */ }
@@ -102,6 +103,8 @@ export default function App() {
           siteplan: { type: 'geojson', data: turf.featureCollection([]) },
           // labels get their own source: if the label font server is unreachable, only labels fail, not the plan
           siteplanLabels: { type: 'geojson', data: turf.featureCollection([]) },
+          editStreets: { type: 'geojson', data: turf.featureCollection([]) },
+          editDraw: { type: 'geojson', data: turf.featureCollection([]) },
           cltWater: { type: 'geojson', data: turf.featureCollection([]) },
           cltSewer: { type: 'geojson', data: turf.featureCollection([]), attribution: 'Charlotte Water (via rezoning reviews)' },
         },
@@ -130,6 +133,13 @@ export default function App() {
           { id: 'siteplan-area-labels', type: 'symbol', source: 'siteplanLabels', minzoom: 14.5, filter: ['==', ['get', 'kind'], 'area-label'],
             layout: { 'text-field': ['get', 'label'], 'text-font': ['Open Sans Semibold'], 'text-size': 11 },
             paint: { 'text-color': '#FFFFFF', 'text-halo-color': 'rgba(28,42,51,0.8)', 'text-halo-width': 1.4 } },
+          // editor: street centerlines (wide invisible line for easy clicking), selection, drawing preview
+          { id: 'edit-streets-hit', type: 'line', source: 'editStreets', paint: { 'line-color': '#000', 'line-opacity': 0, 'line-width': 22 } },
+          { id: 'edit-streets', type: 'line', source: 'editStreets', paint: { 'line-color': '#FFFFFF', 'line-width': 1.5, 'line-dasharray': [3, 2] } },
+          { id: 'edit-streets-sel', type: 'line', source: 'editStreets', filter: ['==', ['get', 'selected'], true], paint: { 'line-color': '#D6157A', 'line-width': 6, 'line-opacity': 0.9 } },
+          { id: 'edit-lot-sel', type: 'line', source: 'editDraw', filter: ['==', ['get', 'kind'], 'lot-sel'], paint: { 'line-color': '#D6157A', 'line-width': 3 } },
+          { id: 'edit-draw-line', type: 'line', source: 'editDraw', filter: ['==', ['get', 'kind'], 'draw'], paint: { 'line-color': '#D6157A', 'line-width': 3, 'line-dasharray': [2, 1] } },
+          { id: 'edit-draw-pts', type: 'circle', source: 'editDraw', filter: ['==', ['get', 'kind'], 'vertex'], paint: { 'circle-radius': 4.5, 'circle-color': '#FFFFFF', 'circle-stroke-color': '#D6157A', 'circle-stroke-width': 2 } },
           { id: 'selected-fill', type: 'fill', source: 'selected', paint: { 'fill-color': '#D6157A', 'fill-opacity': 0.14 } },
           { id: 'selected-line', type: 'line', source: 'selected', paint: { 'line-color': '#D6157A', 'line-width': 3 } },
         ],
@@ -154,7 +164,10 @@ export default function App() {
         m.getSource('cltSewer')?.setData(sewer)
       }).catch(() => {})
     })
+    m.on('dblclick', (e) => { if (editorRef.current) { e.preventDefault(); editorRef.current.dblclick?.(e) } })
+    m.on('mousemove', (e) => editorRef.current?.move?.(e))
     m.on('click', (e) => {
+      if (editorRef.current) { editorRef.current.click(e); return } // the site plan editor handles clicks
       setFromPetition(null)
       selectParcel([e.lngLat.lng, e.lngLat.lat])
     })
@@ -236,6 +249,33 @@ export default function App() {
     m.fitBounds([[w, s], [e, n]], { padding, duration: 1200 })
   }
 
+  // What the site plan editor needs from the map
+  const editor = useMemo(() => ({
+    register: (handlers) => {
+      editorRef.current = handlers
+      const m = map.current
+      if (!m) return
+      if (handlers) { m.doubleClickZoom.disable(); m.getCanvas().style.cursor = 'crosshair' }
+      else { m.doubleClickZoom.enable(); m.getCanvas().style.cursor = ''; m.getSource('editStreets')?.setData(turf.featureCollection([])); m.getSource('editDraw')?.setData(turf.featureCollection([])) }
+    },
+    setOverlay: ({ streets, draw }) => {
+      const m = map.current
+      m?.getSource('editStreets')?.setData(streets || turf.featureCollection([]))
+      m?.getSource('editDraw')?.setData(draw || turf.featureCollection([]))
+    },
+    // what's under a click: a street (by id) first, otherwise a lot
+    pick: (point) => {
+      const m = map.current
+      if (!m) return null
+      const box = [[point.x - 5, point.y - 5], [point.x + 5, point.y + 5]]
+      const st = m.queryRenderedFeatures(box, { layers: ['edit-streets-hit'] })[0]
+      if (st) return { street: st.properties.id }
+      const lot = m.queryRenderedFeatures(box, { layers: ['siteplan-fill'] }).find((f) => f.properties.kind === 'lot')
+      return lot ? { lot: lot.properties.n } : null
+    },
+    setCursor: (c) => { if (map.current) map.current.getCanvas().style.cursor = c },
+  }), [])
+
   const drawPlan = useCallback((fc) => {
     const m = map.current
     if (!m) return
@@ -312,7 +352,7 @@ export default function App() {
       )}
 
       {selected && (
-        <ParcelPanel key={selected.properties.id} parcel={selected} fromPetition={fromPetition} isSaved={isSaved} onSave={toggleSave} onClose={closePanel} onPlan={drawPlan} />
+        <ParcelPanel key={selected.properties.id} parcel={selected} fromPetition={fromPetition} isSaved={isSaved} onSave={toggleSave} onClose={() => { editor.register(null); closePanel() }} onPlan={drawPlan} editor={editor} />
       )}
     </div>
   )

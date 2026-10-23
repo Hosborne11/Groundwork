@@ -421,3 +421,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .nb-stats dd { margin: 0; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
 .nb-stats .dim { color: var(--ink-3); }
 .nb-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
+
+/* ---------- site plan editor ---------- */
+.editor-box { margin: 8px 0 10px; padding: 10px; border: 2px solid var(--survey); border-radius: 6px; background: #fff7fb; }
+.editor-box .seg { margin-bottom: 6px; }
+.editor-box .muted-small { margin: 4px 0 8px; color: var(--ink-2); }
+.btn:disabled { opacity: 0.45; cursor: default; }

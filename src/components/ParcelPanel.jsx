@@ -149,7 +149,7 @@ function CheckRow({ label, swatch, state }) {
   )
 }
 
-export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onClose, onPlan }) {
+export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onClose, onPlan, editor }) {
   const p = parcel.properties
   const isMeck = p.county === 'Mecklenburg'
   const isYork = p.county === 'York'
@@ -211,7 +211,7 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
           <h3>What you can build</h3>
           {place && <p className="place">2040 Policy Map: <strong>{place.name}</strong>{place.area ? ` · ${place.area}` : ''}</p>}
           <BuildSection zoning={cltZoning} acres={p.acres} floodPct={floodPct} />
-          {canSketch && <NeighborhoodCard parcel={parcel} code={zoneParts.base} acres={p.acres} floodPolys={floodPolys} floodFailed={flood.status === 'error'} onPlan={onPlan} />}
+          {canSketch && <NeighborhoodCard parcel={parcel} code={zoneParts.base} acres={p.acres} floodPolys={floodPolys} floodFailed={flood.status === 'error'} onPlan={onPlan} editor={editor} />}
         </section>
       )}
 

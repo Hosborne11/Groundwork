@@ -1,9 +1,25 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import * as turf from '@turf/turf'
 import { neighborhoodKml, LOT_COLORS } from '../lib/neighborhood'
 import { nearbyStreets } from '../lib/charlotte'
 import { N1, CONSERVATION_DISTRICTS, CONSERVATION_MIN_ACRES, MIXED_INCOME_MIN_ACRES } from '../data/charlotteUdo'
 
 const fmt = (n, d = 0) => Number(n).toLocaleString('en-US', { maximumFractionDigits: d, minimumFractionDigits: d })
+
+/** Gentle curves for hand-drawn streets (Chaikin smoothing, endpoints kept). */
+function smooth(pts, passes = 2) {
+  let p = pts
+  for (let k = 0; k < passes && p.length > 2; k++) {
+    const out = [p[0]]
+    for (let i = 0; i < p.length - 1; i++) {
+      const [a, b] = [p[i], p[i + 1]]
+      out.push([0.75 * a[0] + 0.25 * b[0], 0.75 * a[1] + 0.25 * b[1]], [0.25 * a[0] + 0.75 * b[0], 0.25 * a[1] + 0.75 * b[1]])
+    }
+    out.push(p[p.length - 1])
+    p = out
+  }
+  return p
+}
 
 /** Default lot mix: the district's minimum frontage plus two wider options. */
 const defaultMix = (w) => [{ width: w, share: 50 }, { width: w + 20, share: 30 }, { width: w + 40, share: 20 }]
@@ -12,7 +28,7 @@ const defaultMix = (w) => [{ width: w, share: 50 }, { width: w + 20, share: 30 }
  * Automatic neighborhood draft for a Charlotte N1 parcel. Draws on the map through onPlan.
  * floodPolys: floodplain shapes (null while the flood check runs).
  */
-export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floodFailed, onPlan }) {
+export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floodFailed, onPlan, editor }) {
   const std = N1[code]
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState('standard')
@@ -24,6 +40,18 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
   const [streets, setStreets] = useState(null)
   const worker = useRef(null)
   const lastId = useRef(0)
+
+  // ---- editor state ----
+  const [edit, setEdit] = useState(null) // { streets: [{ id, kind, pts }], pond, depth } once the user edits
+  const [removed, setRemoved] = useState([]) // centers of lots the user removed
+  const [history, setHistory] = useState([])
+  const [editing, setEditing] = useState(false)
+  const [tool, setTool] = useState('select')
+  const [selected, setSelected] = useState(null) // { street: id } | { lot: n }
+  const [drawPts, setDrawPts] = useState([])
+  const live = useRef({}) // latest values for map handlers
+  live.current = { edit, removed, tool, drawPts, selected, plan }
+  const nextId = useRef(1)
 
   const modes = [
     { id: 'standard', label: 'Standard' },
@@ -59,13 +87,106 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
       const id = ++lastId.current
       const cleanMix = mix.filter((m) => m.share > 0).map((m) => ({ width: Math.max(minWidth, Number(m.width) || minWidth), share: Number(m.share) }))
       const total = cleanMix.reduce((a, m) => a + m.share, 0) || 1
+      const network = edit ? { streets: edit.streets.map(({ kind, pts }) => ({ kind, pts })), pond: edit.pond, depth: edit.depth } : null
       worker.current.postMessage({
         id, parcel,
-        opts: { code, mode, mix: cleanMix.map((m) => ({ ...m, share: (m.share / total) * 100 })), reservePct: reserve, floodPolys, streets, variant },
+        opts: { code, mode, mix: cleanMix.map((m) => ({ ...m, share: (m.share / total) * 100 })), reservePct: reserve, floodPolys, streets, variant, network, removed },
       })
-    }, 300)
+    }, edit ? 150 : 300)
     return () => clearTimeout(t)
-  }, [open, mode, mix, reserve, variant, floodPolys, streets, parcel, code, minWidth])
+  }, [open, mode, mix, reserve, variant, floodPolys, streets, parcel, code, minWidth, edit, removed])
+
+  // ---- editor actions ----
+  const commit = useCallback((nextEdit, nextRemoved) => {
+    setHistory((h) => [...h.slice(-30), { edit: live.current.edit, removed: live.current.removed }])
+    if (nextEdit !== undefined) setEdit(nextEdit)
+    if (nextRemoved !== undefined) setRemoved(nextRemoved)
+    setSelected(null)
+  }, [])
+  const startEditing = () => {
+    if (!edit && plan?.network) {
+      setEdit({ ...plan.network, streets: plan.network.streets.map((st) => ({ ...st, id: nextId.current++ })) })
+    }
+    setEditing(true)
+    setTool('select')
+  }
+  const undo = () => {
+    setHistory((h) => {
+      if (!h.length) return h
+      const last = h[h.length - 1]
+      setEdit(last.edit); setRemoved(last.removed); setSelected(null)
+      return h.slice(0, -1)
+    })
+  }
+  const deleteSelected = useCallback(() => {
+    const { selected: sel, edit: e, removed: rem, plan: pl } = live.current
+    if (!sel || !e) return
+    if (sel.street != null) commit({ ...e, streets: e.streets.filter((st) => st.id !== sel.street) })
+    else if (sel.lot != null) {
+      const lot = pl?.geojson.features.find((f) => f.properties.kind === 'lot' && f.properties.n === sel.lot)
+      if (lot) commit(undefined, [...rem, turf.pointOnFeature(lot).geometry.coordinates])
+    }
+  }, [commit])
+  const snap = (ll) => {
+    // start or end near an existing street: join it
+    let best = null
+    for (const st of live.current.edit?.streets || []) {
+      const np = turf.nearestPointOnLine(turf.lineString(st.pts), ll, { units: 'feet' })
+      if (np.properties.dist < 40 && (!best || np.properties.dist < best.d)) best = { d: np.properties.dist, p: np.geometry.coordinates }
+    }
+    return best ? best.p : ll
+  }
+  const finishDrawing = useCallback(() => {
+    const pts = live.current.drawPts.filter((p, i, a) => i === 0 || turf.distance(p, a[i - 1], { units: 'feet' }) > 5)
+    setDrawPts([])
+    if (pts.length < 2) return
+    pts[pts.length - 1] = snap(pts[pts.length - 1])
+    const e = live.current.edit
+    commit({ ...e, streets: [...e.streets, { id: nextId.current++, kind: 'user', pts: smooth(pts) }] })
+  }, [commit])
+
+  // map handlers while editing
+  useEffect(() => {
+    if (!editing || !editor) return
+    editor.register({
+      click: (ev) => {
+        const ll = [ev.lngLat.lng, ev.lngLat.lat]
+        if (live.current.tool === 'draw') {
+          setDrawPts((d) => [...d, d.length === 0 ? snap(ll) : ll])
+        } else {
+          const hit = editor.pick(ev.point)
+          setSelected(hit)
+        }
+      },
+      dblclick: () => { if (live.current.tool === 'draw') finishDrawing() },
+      move: (ev) => { if (live.current.tool === 'draw' && live.current.drawPts.length) setCursor([ev.lngLat.lng, ev.lngLat.lat]) },
+    })
+    const onKey = (ev) => {
+      if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '')) return
+      if (ev.key === 'Enter') finishDrawing()
+      else if (ev.key === 'Escape') { setDrawPts([]); setSelected(null) }
+      else if (ev.key === 'Delete' || ev.key === 'Backspace') { ev.preventDefault(); deleteSelected() }
+      else if ((ev.ctrlKey || ev.metaKey) && ev.key === 'z') { ev.preventDefault(); undo() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => { window.removeEventListener('keydown', onKey); editor.register(null) }
+  }, [editing, editor, finishDrawing, deleteSelected])
+
+  // draw the editable overlay: street centerlines, selection, drawing preview
+  const [cursor, setCursor] = useState(null)
+  useEffect(() => {
+    if (!editing || !editor) return
+    const streetsFc = turf.featureCollection((edit?.streets || []).map((st) => turf.lineString(st.pts, { id: st.id, selected: selected?.street === st.id })))
+    const draw = []
+    const line = cursor && tool === 'draw' && drawPts.length ? [...drawPts, cursor] : drawPts
+    if (line.length >= 2) draw.push(turf.lineString(line, { kind: 'draw' }))
+    for (const p of drawPts) draw.push(turf.point(p, { kind: 'vertex' }))
+    if (selected?.lot != null) {
+      const lot = plan?.geojson?.features.find((f) => f.properties.kind === 'lot' && f.properties.n === selected.lot)
+      if (lot) draw.push(turf.feature(turf.polygonToLine(lot).geometry, { kind: 'lot-sel' }))
+    }
+    editor.setOverlay({ streets: streetsFc, draw: turf.featureCollection(draw) })
+  }, [editing, editor, edit, selected, drawPts, cursor, tool, plan])
 
   if (!std) return null
   if (!open) return <button className="btn btn-primary sketch-btn" onClick={() => setOpen(true)}>Draft a neighborhood</button>
@@ -83,7 +204,7 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
     <div className="siteplan">
       <div className="siteplan-head">
         <strong>Neighborhood draft</strong>
-        <button className="link-btn" onClick={() => { setOpen(false); setPlan(null); onPlan(null) }}>Hide draft</button>
+        <button className="link-btn" onClick={() => { setEditing(false); setOpen(false); setPlan(null); onPlan(null) }}>Hide draft</button>
       </div>
 
       {modes.length > 1 && (
@@ -111,16 +232,36 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
       </div>
 
       <label className="slider">
-        <span>Stormwater pond <strong>{reserve}%</strong> of buildable land</span>
-        <input type="range" min={0} max={20} step={1} value={reserve} onChange={(e) => setReserve(Number(e.target.value))} />
+        <span>Stormwater pond <strong>{reserve}%</strong> of buildable land{edit ? ' (fixed while editing)' : ''}</span>
+        <input type="range" min={0} max={20} step={1} value={reserve} disabled={!!edit} onChange={(e) => setReserve(Number(e.target.value))} />
       </label>
+
+      {editing && (
+        <div className="editor-box">
+          <div className="seg" role="group" aria-label="Editing tool">
+            <button className={tool === 'select' ? 'on' : ''} onClick={() => { setTool('select'); setDrawPts([]) }} aria-pressed={tool === 'select'}>Select</button>
+            <button className={tool === 'draw' ? 'on' : ''} onClick={() => { setTool('draw'); setSelected(null) }} aria-pressed={tool === 'draw'}>Draw street</button>
+          </div>
+          <p className="muted-small">
+            {tool === 'draw'
+              ? drawPts.length ? 'Click to add points. Double-click or press Enter to finish, Esc to cancel. Ending near a street connects to it.' : 'Click on the map to start a street. Starting near an existing street connects to it.'
+              : selected ? `${selected.street != null ? 'Street' : `Lot ${selected.lot}`} selected. Press Delete or use the button to remove it.` : 'Click a street or lot to select it.'}
+          </p>
+          <div className="nb-actions">
+            {tool === 'draw' && drawPts.length >= 2 && <button className="btn btn-primary" onClick={finishDrawing}>Finish street</button>}
+            <button className="btn" onClick={deleteSelected} disabled={!selected}>Remove {selected?.street != null ? 'street' : selected?.lot != null ? 'lot' : 'selected'}</button>
+            <button className="btn" onClick={undo} disabled={!history.length}>Undo</button>
+            <button className="btn" onClick={() => { setEditing(false); setDrawPts([]); setSelected(null) }}>Done editing</button>
+          </div>
+        </div>
+      )}
 
       {floodPolys === null && <p className="pending">Waiting for the floodplain check…</p>}
       {floodFailed && <p className="note warn">FEMA's floodplain service didn't respond, so this draft doesn't remove floodplain.</p>}
-      {busy && <p className="pending">Drafting the neighborhood…</p>}
+      {busy && <p className="pending">{edit ? 'Refilling lots…' : 'Drafting the neighborhood…'}</p>}
       {!busy && plan?.error && <p className="note warn">{plan.error}</p>}
 
-      {!busy && ok && (
+      {(!busy || edit) && ok && (
         <>
           <div className="nb-total">
             <span className="nb-lots">{plan.lots}</span><span className="nb-unit">lots</span>
@@ -153,7 +294,9 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
           </dl>
 
           <div className="nb-actions">
-            {plan.variants > 1 && <button className="btn" onClick={() => setVariant((v) => (v + 1) % plan.variants)}>Try another layout ({variant + 1} of {plan.variants})</button>}
+            {!editing && <button className="btn btn-primary" onClick={startEditing}>{edit ? 'Keep editing' : 'Edit layout'}</button>}
+            {!edit && plan.variants > 1 && <button className="btn" onClick={() => setVariant((v) => (v + 1) % plan.variants)}>Try another layout ({variant + 1} of {plan.variants})</button>}
+            {edit && <button className="btn" onClick={() => { setEditing(false); setEdit(null); setRemoved([]); setHistory([]); setSelected(null) }}>Back to automatic draft</button>}
             <button className="btn" onClick={download}>Export KML</button>
           </div>
           <p className="cite">Automatic draft for gauging yield and layout, not an engineered plan. The pond is placed by layout, not by terrain, and grading, tree save, stream buffers, and driveway rules aren't modeled.</p>
