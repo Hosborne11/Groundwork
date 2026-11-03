@@ -242,7 +242,7 @@ export function neighborhoodDraft(parcel, opts) {
     return best
   }
 
-  function layoutN(ang, U, minX, minY, maxX, maxY, nTarget, depth, infill) {
+  function layoutN(ang, U, minX, minY, maxX, maxY, nTarget, depth, infill, pondEnd = 'far') {
     const H = maxY - minY, W = maxX - minX
     // lots widen when needed so width x depth still meets the minimum area
     const types = mix.map((t) => ({ ...t, width: Math.max(t.width, Math.ceil(minLotSf / depth)), depth }))
@@ -273,7 +273,8 @@ export function neighborhoodDraft(parcel, opts) {
       const cy = (minY + maxY) / 2
       const span = spanAtY(U, cy)
       if (span) {
-        const cx = entryWest ? span[1] - r * 1.45 : span[0] + r * 1.45
+        const farEnd = pondEnd === 'far' ? entryWest : !entryWest
+        const cx = farEnd ? span[1] - r * 1.45 : span[0] + r * 1.45
         pond = clip(poly(Array.from({ length: 40 }, (_, i) => { const t = (2 * Math.PI * i) / 40; return [cx + r * 1.35 * Math.cos(t), cy + (r / 1.35) * Math.sin(t)] })), U)
       }
     }
@@ -337,6 +338,20 @@ export function neighborhoodDraft(parcel, opts) {
     const rows = streets.map((s) => rowPolygon(s.pts)).filter(Boolean)
     for (const b of bulbs) rows.push(pond ? (minus(circle(b.c, BULB_R + 5, 24), pond) || circle(b.c, BULB_R + 5, 24)) : circle(b.c, BULB_R + 5, 24))
     const rowBoxes = rows.map(bboxOf)
+
+    // A pond can't sit on a street. If this placement does, try the pond at the other end and keep the better.
+    let pondHits = pond ? rows.reduce((t, rw) => { const o = clip(pond, rw); return t + (o ? areaFt(o.geometry) : 0) }, 0) : 0
+    if (pondEnd === 'far' && pondHits > Math.max(1500, 0.03 * areaFt(pond.geometry))) {
+      const alt = layoutN(ang, U, minX, minY, maxX, maxY, nTarget, depth, infill, 'near')
+      if (alt && alt.pondHits < pondHits) return alt
+    }
+    // Where a street still grazes the pond, pull the pond back from it (keep the largest piece).
+    if (pond && pondHits > 0) {
+      const touching = rows.filter((rw, k) => boxesTouch(bboxOf(pond), rowBoxes[k]))
+      let trimmed = touching.length ? minus(pond, ...touching) : pond
+      if (trimmed?.geometry.type === 'MultiPolygon') trimmed = trimmed.geometry.coordinates.map((c) => turf.polygon(c)).sort((x, y) => areaFt(y.geometry) - areaFt(x.geometry))[0]
+      if (trimmed && areaFt(trimmed.geometry) > 0.5 * areaFt(pond.geometry)) { pond = trimmed; pondHits = 0 }
+    }
 
     // ---- lot engine ----
     const lots = []
@@ -532,7 +547,7 @@ export function neighborhoodDraft(parcel, opts) {
         if (!added) break
       }
     }
-    return { ang, U, B, ponds, parks: [], rows, lots, streets, bulbs, types, depth, spurs, lotCount: lots.length }
+    return { ang, U, B, ponds, parks: [], rows, lots, streets, bulbs, types, depth, spurs, pondHits, lotCount: lots.length }
   }
 
   /* ---------- editor: lots along a given street network (no rotation) ---------- */
