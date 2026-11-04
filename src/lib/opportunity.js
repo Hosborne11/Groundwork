@@ -121,9 +121,12 @@ export const TREND_METRICS = [
   { key: 'sales', label: 'Land sales', unit: 'vacant-land sale' },
 ]
 
-/** Hexagons colored by one measure in one year, on a scale shared by all years. */
-export function trendCollection(data, metric, yearIx) {
-  const max = Math.max(1, ...data.hexes.flatMap((h) => h.t?.[metric] || []))
+/**
+ * Hexagons colored by one measure in one year. scale 'all' shares one scale across every year
+ * (years compare honestly); 'year' scales to that year's busiest area (hot spots in quiet years show up).
+ */
+export function trendCollection(data, metric, yearIx, scale = 'all') {
+  const max = Math.max(1, ...(scale === 'year' ? data.hexes.map((h) => h.t?.[metric]?.[yearIx] || 0) : data.hexes.flatMap((h) => h.t?.[metric] || [])))
   return {
     type: 'FeatureCollection',
     features: data.hexes.map((h) => {

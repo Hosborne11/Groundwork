@@ -3,7 +3,7 @@ import { FACTORS, DEFAULT_WEIGHTS, SCORE_COLORS, topDrivers, areaName, TREND_MET
 
 const scoreColor = (s) => [...SCORE_COLORS].reverse().find(([t]) => s >= t)[1]
 
-export default function OpportunityPanel({ data, scored, weights, setWeights, selected, onSelect, mode, setMode, metric, setMetric, yearIx, setYearIx }) {
+export default function OpportunityPanel({ data, scored, weights, setWeights, selected, onSelect, mode, setMode, metric, setMetric, yearIx, setYearIx, scale, setScale }) {
   if (data === undefined) return <p className="muted">Loading opportunity data…</p>
   if (data === null) {
     return (
@@ -23,7 +23,7 @@ export default function OpportunityPanel({ data, scored, weights, setWeights, se
     </div>
   )
   if (mode === 'trends' && data.years) {
-    return <div className="opp">{tabs}<TrendsView data={data} metric={metric} setMetric={setMetric} yearIx={yearIx} setYearIx={setYearIx} selected={selected} onSelect={onSelect} /></div>
+    return <div className="opp">{tabs}<TrendsView data={data} metric={metric} setMetric={setMetric} yearIx={yearIx} setYearIx={setYearIx} selected={selected} onSelect={onSelect} scale={scale} setScale={setScale} /></div>
   }
 
   return (
@@ -128,7 +128,7 @@ function Bars({ values, years, active, height = 64, onPick }) {
   )
 }
 
-function TrendsView({ data, metric, setMetric, yearIx, setYearIx, selected, onSelect }) {
+function TrendsView({ data, metric, setMetric, yearIx, setYearIx, selected, onSelect, scale, setScale }) {
   const [playing, setPlaying] = useState(false)
   const years = data.years
   const totals = countyTotals(data, metric)
@@ -145,7 +145,7 @@ function TrendsView({ data, metric, setMetric, yearIx, setYearIx, selected, onSe
 
   return (
     <>
-      <p className="flyout-note">How activity has moved across Mecklenburg since {years[0]}. Each year uses the same color scale, so busier areas glow hotter.</p>
+      <p className="flyout-note">How activity has moved across Mecklenburg since {years[0]}.</p>
       <div className="seg" role="group" aria-label="Measure">
         {TREND_METRICS.map((x) => <button key={x.key} className={metric === x.key ? 'on' : ''} onClick={() => setMetric(x.key)}>{x.label}</button>)}
       </div>
@@ -155,6 +155,15 @@ function TrendsView({ data, metric, setMetric, yearIx, setYearIx, selected, onSe
         <input type="range" min={0} max={years.length - 1} value={yearIx} onChange={(e) => { setPlaying(false); setYearIx(Number(e.target.value)) }} aria-label="Year" />
         <strong>{years[yearIx]}</strong>
       </div>
+
+      <div className="trend-scale">
+        <span>Color scale</span>
+        <div className="seg" role="group" aria-label="Color scale">
+          <button className={scale === 'all' ? 'on' : ''} onClick={() => setScale('all')} aria-pressed={scale === 'all'}>All years</button>
+          <button className={scale === 'year' ? 'on' : ''} onClick={() => setScale('year')} aria-pressed={scale === 'year'}>This year only</button>
+        </div>
+      </div>
+      <p className="muted-small">{scale === 'all' ? 'One scale for every year, so a hotter color always means more activity.' : `Scaled to ${years[yearIx]}'s busiest area, so the year's relative hot spots stand out even when activity is low.`}</p>
 
       <section className="trend-chart">
         <div className="trend-head"><span>County total: {m.label.toLowerCase()}</span><strong>{totals[yearIx].toLocaleString()}</strong></div>

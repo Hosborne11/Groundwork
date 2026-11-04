@@ -51,11 +51,12 @@ export default function App() {
   const [oppMode, setOppMode] = useState('score')
   const [trendMetric, setTrendMetric] = useState('filed')
   const [trendYear, setTrendYear] = useState(null)
+  const [trendScale, setTrendScale] = useState('all')
   const yearIx = trendYear ?? (oppData?.years ? oppData.years.length - 1 : 0)
   const oppFc = useMemo(() => {
     if (!oppData) return null
-    return oppMode === 'trends' && oppData.years ? trendCollection(oppData, trendMetric, yearIx) : oppScored?.fc
-  }, [oppData, oppMode, trendMetric, yearIx, oppScored])
+    return oppMode === 'trends' && oppData.years ? trendCollection(oppData, trendMetric, yearIx, trendScale) : oppScored?.fc
+  }, [oppData, oppMode, trendMetric, yearIx, trendScale, oppScored])
   const [rezonings, setRezonings] = useState(null)
   // set when a parcel is opened from the Rezonings list, so the outlook grades the requested district
   const [fromPetition, setFromPetition] = useState(null)
@@ -379,6 +380,7 @@ export default function App() {
         opportunity={{
           data: oppData, scored: oppScored, weights: oppWeights, setWeights: setOppWeights, selected: oppSel,
           mode: oppMode, setMode: setOppMode, metric: trendMetric, setMetric: setTrendMetric, yearIx, setYearIx: setTrendYear,
+          scale: trendScale, setScale: setTrendScale,
           onSelect: (id, fly) => {
             setOppSel(id)
             const x = id != null && oppScored?.byId[id]

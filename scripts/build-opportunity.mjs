@@ -107,7 +107,8 @@ const hexAt = (pt) => {
 
 /* ---------------- 2. rezonings ---------------- */
 console.log('Rezonings…')
-const hist = await getAll(SOURCES.history, { where: "Received >= DATE '2020-01-01'", outFields: 'Petition,Status,Received,Approved,PetAcres,RequestedZoning', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0001, geometryPrecision: 5 }, 'decided and pending petitions')
+// start a year early so petitions filed in 2019 but approved in 2020 or later still count as approvals
+const hist = await getAll(SOURCES.history, { where: `Received >= DATE '${FIRST_YEAR - 1}-01-01'`, outFields: 'Petition,Status,Received,Approved,PetAcres,RequestedZoning', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0001, geometryPrecision: 5 }, 'decided and pending petitions')
 const seen = new Set()
 for (const f of hist) {
   const p = f.properties

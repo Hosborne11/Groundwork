@@ -478,3 +478,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .opp .seg button.on { background: var(--card); color: var(--ink); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
 .opp .seg button:disabled { opacity: 0.4; }
 .trend-mini { margin-bottom: 8px; }
+
+.trend-scale { display: flex; align-items: center; gap: 10px; }
+.trend-scale > span { font-size: 12px; font-weight: 600; color: var(--ink-2); white-space: nowrap; }
+.trend-scale .seg { flex: 1; margin-bottom: 0; }
