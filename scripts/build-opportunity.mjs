@@ -18,7 +18,12 @@ const SOURCES = {
   vacant: `${CLT}/PLN/VacantLand/MapServer/0`,
   parcels: `${CLT}/PLN/AllParcelData/MapServer/0`,
   policy: 'https://services.arcgis.com/9Nl857LBlQVyzq54/arcgis/rest/services/Charlotte_Future_2040_Policy_Map/FeatureServer/0',
+  streets: `${CLT}/CountyData/Streets/MapServer/0`,
 }
+const MIN_SALES = 5 // per period and lot size before a price trend is shown
+const TREND_CAP = [-0.5, 1.5] // one odd sale shouldn't swing an area to the top
+// how much a street's length counts toward naming an area: main roads should win
+const ROAD_WEIGHT = { EXMJTH: 5, EXMJTHC3C: 5, PROPMJTH: 5, EXFRY: 4, PROPFRY: 4, C2EX: 4, EXMINTH: 4, PROPMINTH: 4, EXCOLLMJ: 3, LOCAL: 1 }
 const OUT = 'public/data/opportunity-meck.json'
 const WATER = 'public/data/charlotte-water.json'
 const CELL_MILES = 0.4 // hexagon side length; about 0.42 sq mi each
@@ -76,7 +81,7 @@ const grid = turf.hexGrid(turf.bbox(county), CELL_MILES, { units: 'miles' })
 const hexes = grid.features.filter((h) => turf.booleanIntersects(h, county)).map((h, i) => ({
   id: i, geom: h.geometry, c: turf.centroid(h).geometry.coordinates, bbox: turf.bbox(h),
   m: { rezApproved: 0, rezActive: 0, rezAcres: 0, rezWithdrawn: 0, sales: 0, saleAcres: 0, vacantAc: 0, bigVacantAc: 0, bigVacantN: 0, water: 0, sewer: 0, growthShare: 0 },
-  ppaRecent: [], ppaPrior: [], rezList: [], place: null,
+  ppa: { small: { recent: [], prior: [] }, tract: { recent: [], prior: [] } }, rezList: [], place: null, roads: {}, towns: {},
 }))
 console.log(`  ${hexes.length} hexagons`)
 
@@ -119,11 +124,14 @@ for (const f of active) {
 
 /* ---------------- 3. vacant land supply ---------------- */
 console.log('Vacant land…')
-const vacant = await getAll(SOURCES.vacant, { where: '1=1', outFields: 'pid,totalac', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0002, geometryPrecision: 5 }, 'vacant parcels')
+const vacant = await getAll(SOURCES.vacant, { where: '1=1', outFields: 'pid,totalac,municipality', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0002, geometryPrecision: 5 }, 'vacant parcels')
 for (const f of vacant) {
   const ac = Number(f.properties.totalac) || acresOf(f)
   const h = hexAt(centerOf(f))
-  if (!h || !(ac > 0)) continue
+  if (!h) continue
+  const town = (f.properties.municipality || '').trim()
+  if (town) h.towns[town] = (h.towns[town] || 0) + 1
+  if (!(ac > 0)) continue
   h.m.vacantAc += ac
   if (ac >= 2) { h.m.bigVacantAc += ac; h.m.bigVacantN++ } // parcels large enough to become subdivisions
 }
@@ -159,8 +167,10 @@ for (const d of deeds.values()) {
   if (d.date >= RECENT_FROM.getTime()) { h.m.sales++; h.m.saleAcres += d.acres }
   const ppa = d.acres >= 0.1 ? d.price / d.acres : null // tiny slivers make price per acre meaningless
   if (!ppa || ppa > 20e6) continue
-  if (d.date >= RECENT_FROM.getTime()) h.ppaRecent.push(ppa)
-  else if (d.date >= PRIOR_FROM.getTime() && d.date < PRIOR_TO.getTime()) h.ppaPrior.push(ppa)
+  // compare like with like: small lots and larger tracts sell at very different prices per acre
+  const band = d.acres < 1 ? h.ppa.small : h.ppa.tract
+  if (d.date >= RECENT_FROM.getTime()) band.recent.push(ppa)
+  else if (d.date >= PRIOR_FROM.getTime() && d.date < PRIOR_TO.getTime()) band.prior.push(ppa)
 }
 
 /* ---------------- 5. reported water and sewer mains ---------------- */
@@ -180,6 +190,22 @@ try {
   }
   console.log('Charlotte Water records: added')
 } catch { console.log('Charlotte Water data not found; run data:charlotte-water first for the utilities signal.') }
+
+/* ---------------- 5b. street names, to label each area ---------------- */
+console.log('Street names…')
+const streetsData = await getAll(SOURCES.streets, { where: "STREETCLASS <> 'PV' AND THOROUGHFARETYPE <> 'RAMP'", outFields: 'WHOLESTNAME,THOROUGHFARETYPE', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0001, geometryPrecision: 5 }, 'street segments', 4000)
+for (const f of streetsData) {
+  const name = (f.properties.WHOLESTNAME || '').trim()
+  if (!name || !f.geometry) continue
+  const w = ROAD_WEIGHT[f.properties.THOROUGHFARETYPE] ?? 1
+  for (const ln of turf.flatten(f).features) {
+    const L = turf.length(ln, { units: 'feet' })
+    for (let d = 100; d < L; d += 200) {
+      const h = hexAt(turf.along(ln, d, { units: 'feet' }).geometry.coordinates)
+      if (h) h.roads[name] = (h.roads[name] || 0) + 200 * w
+    }
+  }
+}
 
 /* ---------------- 6. 2040 Policy Map ---------------- */
 console.log('2040 Policy Map…')
@@ -206,17 +232,35 @@ process.stdout.write('\n')
 const spacing = CELL_MILES * Math.sqrt(3) * 1.15 // distance between neighboring hexagon centers, with slack
 for (const h of hexes) {
   const ring = hexes.filter((o) => turf.distance(h.c, o.c, { units: 'miles' }) <= spacing)
-  const recent = ring.flatMap((o) => o.ppaRecent), prior = ring.flatMap((o) => o.ppaPrior)
-  h.m.ppaRecent = median(recent); h.m.ppaPrior = median(prior)
-  h.m.ppaN = [recent.length, prior.length]
-  h.m.priceTrend = recent.length >= 3 && prior.length >= 3 ? h.m.ppaRecent / h.m.ppaPrior - 1 : null
+  const bands = []
+  for (const key of ['small', 'tract']) {
+    const recent = ring.flatMap((o) => o.ppa[key].recent), prior = ring.flatMap((o) => o.ppa[key].prior)
+    if (recent.length < MIN_SALES || prior.length < MIN_SALES) continue
+    const r = median(recent), p = median(prior)
+    bands.push({ band: key, recent: r, prior: p, nR: recent.length, nP: prior.length, trend: r / p - 1, w: Math.min(recent.length, prior.length) })
+  }
+  const wsum = bands.reduce((t, b) => t + b.w, 0)
+  const raw = wsum ? bands.reduce((t, b) => t + b.trend * b.w, 0) / wsum : null
+  h.m.priceTrend = raw == null ? null : Math.max(TREND_CAP[0], Math.min(TREND_CAP[1], raw))
+  h.m.trendBands = bands.map(({ w, ...b }) => b)
+}
+
+/* ---------------- 8. names ---------------- */
+for (const h of hexes) {
+  const roads = Object.entries(h.roads).sort((a, b) => b[1] - a[1])
+  const [first, second] = roads
+  let name = first ? first[0] : null
+  if (second && second[1] >= 0.3 * first[1]) name = `${first[0]} & ${second[0]}`
+  const town = Object.entries(h.towns).sort((a, b) => b[1] - a[1])[0]?.[0]
+  const townName = town && !['CHARLOTTE', 'UNINC'].includes(town) ? town.charAt(0) + town.slice(1).toLowerCase().replace(/ (\w)/g, (m, c) => ' ' + c.toUpperCase()) : null
+  h.name = [name, townName].filter(Boolean).join(', ') || null
 }
 
 /* ---------------- write ---------------- */
 const out = {
   generated: NOW.toISOString(), county: 'Mecklenburg', cellMiles: CELL_MILES,
   windows: { recentFrom: RECENT_FROM.toISOString().slice(0, 10), priorFrom: PRIOR_FROM.toISOString().slice(0, 10), priorTo: PRIOR_TO.toISOString().slice(0, 10), rezoningsFrom: yearsAgo(3).toISOString().slice(0, 10) },
-  hexes: hexes.map((h) => ({ id: h.id, g: round(h.geom).coordinates[0], m: round(h.m, 3), place: h.place, rz: h.rezList.slice(0, 8) })),
+  hexes: hexes.map((h) => ({ id: h.id, name: h.name, g: round(h.geom).coordinates[0], m: round(h.m, 3), place: h.place, rz: h.rezList.slice(0, 8) })),
 }
 await fs.mkdir('public/data', { recursive: true })
 await fs.writeFile(OUT, JSON.stringify(out))

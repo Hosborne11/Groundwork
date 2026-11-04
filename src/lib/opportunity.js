@@ -20,11 +20,15 @@ export const FACTORS = [
     explain: (m) => (m.sales ? `${plural(m.sales, 'vacant-land sale')} in 2 years (${Math.round(m.saleAcres)} ac)` : 'No recent vacant-land sales'),
   },
   {
-    key: 'trend', label: 'Land price trend', weight: 15,
-    value: (m) => m.priceTrend, // null when there aren't enough sales to compare
-    explain: (m) => (m.priceTrend == null
-      ? 'Too few sales nearby to compare prices'
-      : `${m.priceTrend >= 0 ? '+' : ''}${Math.round(m.priceTrend * 100)}% per acre (${money(m.ppaPrior)} → ${money(m.ppaRecent)}, this area and its neighbors)`),
+    key: 'trend', label: 'Land price trend', weight: 10,
+    value: (m) => m.priceTrend, // null when there aren't enough comparable sales
+    explain: (m) => {
+      if (m.priceTrend == null) return 'Too few comparable land sales nearby to measure (needs 5+ in each period)'
+      const pct = (v) => `${v >= 0 ? '+' : ''}${Math.round(v * 100)}%`
+      const bands = (m.trendBands || []).map((b) => `${b.band === 'small' ? 'lots under 1 ac' : 'tracts of 1+ ac'} ${pct(b.trend)} (${money(b.prior)} → ${money(b.recent)}/ac, ${b.nP} → ${b.nR} sales)`)
+      const capped = (m.trendBands || []).some((b) => b.trend > 1.5 || b.trend < -0.5)
+      return `${pct(m.priceTrend)} per acre on comparable land nearby: ${bands.join('; ')}${capped ? ' (capped)' : ''}`
+    },
   },
   {
     key: 'land', label: 'Developable land', weight: 25,

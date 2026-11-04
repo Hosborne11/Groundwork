@@ -31,8 +31,8 @@ export default function OpportunityPanel({ data, scored, weights, setWeights, se
           <div className="opp-sel-head">
             <span className="opp-score" style={{ background: scoreColor(sel.score) }}>{sel.score}</span>
             <div>
-              <strong>Rank {sel.rank} of {scored.count}</strong>
-              <span>Top {Math.max(1, Math.round((sel.rank / scored.count) * 100))}% in the county</span>
+              {sel.h.name && <strong className="opp-name">{sel.h.name}</strong>}
+              <span>Rank {sel.rank} of {scored.count} · top {Math.max(1, Math.round((sel.rank / scored.count) * 100))}% in the county</span>
             </div>
             <button className="close" onClick={() => onSelect(null)} aria-label="Clear selection">×</button>
           </div>
@@ -76,7 +76,10 @@ export default function OpportunityPanel({ data, scored, weights, setWeights, se
               <li key={x.h.id}>
                 <button className={selected === x.h.id ? 'on' : ''} onClick={() => onSelect(x.h.id, true)}>
                   <span className="opp-score sm" style={{ background: scoreColor(x.score) }}>{x.score}</span>
-                  <span className="opp-why">{topDrivers(x, weights).join(' · ') || 'mixed signals'}{x.h.place ? <small>{x.h.place}</small> : null}</span>
+                  <span className="opp-why">
+                    <strong>{x.h.name || 'Unnamed area'}</strong>
+                    <small>{topDrivers(x, weights).join(' · ') || 'mixed signals'}</small>
+                  </span>
                 </button>
               </li>
             ))}
