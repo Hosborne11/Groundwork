@@ -173,7 +173,7 @@ export default function App() {
             layout: { 'text-field': ['get', 'label'], 'text-font': ['Open Sans Semibold'], 'text-size': ['interpolate', ['linear'], ['zoom'], 16, 9, 18, 13], 'text-allow-overlap': false },
             paint: { 'text-color': '#1C2A33', 'text-halo-color': 'rgba(255,255,255,0.7)', 'text-halo-width': 1.2 } },
           { id: 'siteplan-area-labels', type: 'symbol', source: 'siteplanLabels', minzoom: 14.5, filter: ['==', ['get', 'kind'], 'area-label'],
-            layout: { 'text-field': ['get', 'label'], 'text-font': ['Open Sans Semibold'], 'text-size': ['interpolate', ['linear'], ['zoom'], 15, 11, 18, 14], 'text-max-width': 8 },
+            layout: { 'text-field': ['get', 'label'], 'text-font': ['Open Sans Semibold'], 'text-size': ['interpolate', ['linear'], ['zoom'], 15, 11, 18, 14], 'text-max-width': 8, 'symbol-sort-key': ['coalesce', ['get', 'rank'], 3] },
             paint: { 'text-color': '#FFFFFF', 'text-halo-color': 'rgba(28,42,51,0.85)', 'text-halo-width': 1.5 } },
           // editor: street centerlines (wide invisible line for easy clicking), selection, drawing preview
           { id: 'edit-streets-hit', type: 'line', source: 'editStreets', paint: { 'line-color': '#000', 'line-opacity': 0, 'line-width': 22 } },

@@ -721,11 +721,32 @@ export function neighborhoodDraft(parcel, opts) {
     // every shape carries its own fill color so the map style stays simple
     const FILL = { road: '#1C2A33', pond: '#3A8DDE', green: '#38A169', park: '#2F855A', flood: '#5BB5D9' }
     for (const f of features) f.properties.fill = f.properties.kind === 'lot' ? f.properties.color : FILL[f.properties.kind] || '#FFFFFF'
+    // Ponds and parks get first claim on label space; green-space labels must not sit on water or a park.
+    const LABEL_RANK = { pond: 0, park: 1, flood: 2, green: 3 }
+    const blockers = features.filter((f) => f.properties.kind === 'pond' || f.properties.kind === 'park')
+    const clear = (pt) => !blockers.some((b) => turf.booleanPointInPolygon(pt, b))
+    const labelPoint = (f) => {
+      const first = turf.pointOnFeature(f).geometry.coordinates
+      if (f.properties.kind !== 'green' || clear(first)) return first
+      // try a grid of points inside the green space, keeping the one deepest inside and clear of ponds/parks
+      const [w, s2, e, n] = turf.bbox(f)
+      let best = null
+      for (let i = 1; i < 8; i++) for (let j = 1; j < 8; j++) {
+        const pt = [w + ((e - w) * i) / 8, s2 + ((n - s2) * j) / 8]
+        if (!turf.booleanPointInPolygon(pt, f) || !clear(pt)) continue
+        const d = turf.pointToLineDistance(pt, turf.polygonToLine(f).type === 'FeatureCollection' ? turf.polygonToLine(f).features[0] : turf.polygonToLine(f))
+        if (!best || d > best.d) best = { pt, d }
+      }
+      return best ? best.pt : null // no clear spot: skip the label
+    }
     // labels (points)
     const labels = []
     for (const f of features) {
       if (f.properties.kind === 'lot') labels.push(turf.feature(turf.centroid(f).geometry, { label: String(f.properties.n), kind: 'lot-label' }))
-      else if (f.properties.label) labels.push(turf.feature(turf.pointOnFeature(f).geometry, { label: f.properties.label, kind: 'area-label' }))
+      else if (f.properties.label) {
+        const pt = labelPoint(f)
+        if (pt) labels.push(turf.feature({ type: 'Point', coordinates: pt }, { label: f.properties.label, kind: 'area-label', rank: LABEL_RANK[f.properties.kind] ?? 3 }))
+      }
     }
 
     const roadSf = roads ? areaFt(roads.geometry) : 0
