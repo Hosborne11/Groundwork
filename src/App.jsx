@@ -10,6 +10,7 @@ import { charlotteWaterLines } from './lib/charlotteWater'
 import ParcelPanel from './components/ParcelPanel'
 import Search from './components/Search'
 import SideRail from './components/SideRail'
+import { loadOpportunity, scoreHexes, DEFAULT_WEIGHTS, SCORE_COLORS } from './lib/opportunity'
 import CountyPicker from './components/CountyPicker'
 import { loadCounties, countyAt } from './lib/counties'
 
@@ -33,10 +34,19 @@ export default function App() {
   const [loadingParcel, setLoadingParcel] = useState(false)
   const [error, setError] = useState(null)
   const [basemap, setBasemap] = useState('imagery')
-  const [layers, setLayers] = useState({ parcels: true, rezonings: true, sewer: true, water: true, flood: false })
+  const [layers, setLayers] = useState({ parcels: true, opportunity: false, rezonings: true, sewer: true, water: true, flood: false })
   const [zoom, setZoom] = useState(11)
   const [saved, setSaved] = useState(loadSaved)
   const [menu, setMenu] = useState(null)
+  const menuRef = useRef(null)
+  menuRef.current = menu
+  // opportunity map
+  const [oppData, setOppData] = useState(undefined)
+  const [oppWeights, setOppWeights] = useState(DEFAULT_WEIGHTS)
+  const [oppSel, setOppSel] = useState(null)
+  const showOpp = layers.opportunity || menu === 'opportunity'
+  useEffect(() => { if (showOpp && oppData === undefined) loadOpportunity().then(setOppData) }, [showOpp, oppData])
+  const oppScored = useMemo(() => (oppData ? scoreHexes(oppData, oppWeights) : null), [oppData, oppWeights])
   const [rezonings, setRezonings] = useState(null)
   // set when a parcel is opened from the Rezonings list, so the outlook grades the requested district
   const [fromPetition, setFromPetition] = useState(null)
@@ -100,6 +110,7 @@ export default function App() {
           selected: { type: 'geojson', data: turf.featureCollection([]) },
           rezonings: { type: 'geojson', data: turf.featureCollection([]), attribution: 'City of Charlotte' },
           counties: { type: 'geojson', data: turf.featureCollection([]), attribution: 'U.S. Census Bureau' },
+          opportunity: { type: 'geojson', data: turf.featureCollection([]) },
           siteplan: { type: 'geojson', data: turf.featureCollection([]) },
           // labels get their own source: if the label font server is unreachable, only labels fail, not the plan
           siteplanLabels: { type: 'geojson', data: turf.featureCollection([]) },
@@ -115,6 +126,13 @@ export default function App() {
           { id: 'county-line', type: 'line', source: 'counties', paint: { 'line-color': '#FFFFFF', 'line-width': 1.4, 'line-opacity': 0.75, 'line-dasharray': [3, 2] } },
           { id: 'county-selected', type: 'line', source: 'counties', filter: ['==', ['get', 'GEOID'], ''], paint: { 'line-color': '#FFFFFF', 'line-width': ['interpolate', ['linear'], ['zoom'], 8, 2.5, 12, 4] } },
           { id: 'flood', type: 'raster', source: 'flood', layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.6 } },
+          // opportunity hexagons: hotter = higher score; low scores fade so hot spots stand out
+          { id: 'opp-fill', type: 'fill', source: 'opportunity', layout: { visibility: 'none' }, paint: {
+            'fill-color': ['interpolate', ['linear'], ['get', 'score'], ...SCORE_COLORS.flat()],
+            'fill-opacity': ['interpolate', ['linear'], ['get', 'score'], 0, 0.08, 50, 0.3, 100, 0.65],
+          } },
+          { id: 'opp-line', type: 'line', source: 'opportunity', layout: { visibility: 'none' }, paint: { 'line-color': '#FFFFFF', 'line-opacity': 0.25, 'line-width': 0.5 } },
+          { id: 'opp-sel', type: 'line', source: 'opportunity', filter: ['==', ['get', 'id'], -1], paint: { 'line-color': '#D6157A', 'line-width': 3 } },
           { id: 'parcels', type: 'line', source: 'parcels', minzoom: PARCEL_MIN_ZOOM, paint: { 'line-color': '#FFFFFF', 'line-opacity': 0.8, 'line-width': ['interpolate', ['linear'], ['zoom'], 15, 0.6, 18, 1.6] } },
           { id: 'water', type: 'line', source: 'water', minzoom: LINE_MIN_ZOOM, paint: { 'line-color': '#2F7DE1', 'line-width': ['interpolate', ['linear'], ['zoom'], 15, 1.5, 18, 4] } },
           { id: 'cltWater', type: 'line', source: 'cltWater', minzoom: 13, paint: { 'line-color': '#2F7DE1', 'line-width': ['interpolate', ['linear'], ['zoom'], 13, 2, 18, 5], 'line-opacity': 0.75, 'line-dasharray': [1.5, 1] } },
@@ -172,6 +190,11 @@ export default function App() {
     m.on('mouseup', (e) => { if (dragging) { dragging = false; m.dragPan.enable(); editorRef.current?.mouseup?.(e) } })
     m.on('click', (e) => {
       if (editorRef.current) { editorRef.current.click(e); return } // the site plan editor handles clicks
+      if (menuRef.current === 'opportunity') { // with the Opportunity panel open, clicks pick hexagons
+        const hex = m.queryRenderedFeatures(e.point, { layers: ['opp-fill'] })[0]
+        setOppSel(hex ? hex.properties.id : null)
+        return
+      }
       setFromPetition(null)
       selectParcel([e.lngLat.lng, e.lngLat.lat])
     })
@@ -195,6 +218,7 @@ export default function App() {
     const m = map.current
     if (!m) return
     const apply = () => {
+      for (const id of ['opp-fill', 'opp-line']) m.setLayoutProperty(id, 'visibility', layers.opportunity || menuRef.current === 'opportunity' ? 'visible' : 'none')
       for (const id of ['parcels', 'sewer', 'water', 'flood']) {
         m.setLayoutProperty(id, 'visibility', layers[id] ? 'visible' : 'none')
       }
@@ -282,6 +306,17 @@ export default function App() {
     setCursor: (c) => { if (map.current) map.current.getCanvas().style.cursor = c },
   }), [])
 
+  useEffect(() => {
+    const m = map.current
+    if (!m) return
+    const apply = () => {
+      m.getSource('opportunity')?.setData(oppScored ? oppScored.fc : turf.featureCollection([]))
+      for (const id of ['opp-fill', 'opp-line']) m.setLayoutProperty(id, 'visibility', showOpp ? 'visible' : 'none')
+      m.setFilter('opp-sel', ['==', ['get', 'id'], showOpp && oppSel != null ? oppSel : -1])
+    }
+    m.isStyleLoaded() ? apply() : m.once('load', apply)
+  }, [oppScored, showOpp, oppSel])
+
   const drawPlan = useCallback((fc) => {
     const m = map.current
     if (!m) return
@@ -332,6 +367,17 @@ export default function App() {
         onPickSaved={(s) => { setMenu(null); flyToParcel(s.feature) }}
         onRemoveSaved={(pin) => setSaved((l) => l.filter((s) => s.pin !== pin))}
         rezonings={rezonings}
+        opportunity={{
+          data: oppData, scored: oppScored, weights: oppWeights, setWeights: setOppWeights, selected: oppSel,
+          onSelect: (id, fly) => {
+            setOppSel(id)
+            const x = id != null && oppScored?.byId[id]
+            if (fly && x) {
+              const [w, s, e, n] = turf.bbox(turf.polygon([x.h.g]))
+              map.current?.fitBounds([[w, s], [e, n]], { padding: { top: 120, bottom: 120, left: 440, right: 120 }, maxZoom: 13.5 }) // keep neighbors in view
+            }
+          },
+        }}
         county={COUNTIES.find((c) => c.id === county)?.name || null}
         onPickPetition={(f) => {
           const [w, s, e, n] = turf.bbox(f)

@@ -3,6 +3,7 @@ import LayerPanel from './LayerPanel'
 import SavedList from './SavedList'
 import ZoningKey from './ZoningKey'
 import ZoneCode from './ZoneCode'
+import OpportunityPanel from './OpportunityPanel'
 import { loadCharlotteWater } from '../lib/charlotteWater'
 import { SOURCE_NOTES } from '../lib/rezonings'
 
@@ -14,6 +15,7 @@ const ICONS = {
   rezonings: <><path d="M5 21V4" /><path d="M5 4h11l-2 3.5L16 11H5" /></>,
   sources: <><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7.5v.01" /></>,
   key: <><circle cx="8" cy="15" r="4.5" /><path d="m11.3 11.7 8.2-8.2M16.5 6.5l2.5 2.5M14 9l2 2" /></>,
+  opportunity: <><path d="M12 2.5 20.5 7.5v9L12 21.5 3.5 16.5v-9L12 2.5z" /><path d="M12 8.5c1.6 1.4 2.4 2.7 2.4 4a2.4 2.4 0 0 1-4.8 0c0-1.3.8-2.6 2.4-4z" /></>,
   account: <><circle cx="12" cy="8.5" r="3.8" /><path d="M4.5 20c1.3-3.6 4.1-5.4 7.5-5.4s6.2 1.8 7.5 5.4" /></>,
 }
 const Icon = ({ name }) => (
@@ -28,12 +30,13 @@ const ITEMS = [
   { id: 'saved', label: 'Saved' },
   { id: 'rezonings', label: 'Rezonings' },
   { id: 'key', label: 'Zoning Key' },
+  { id: 'opportunity', label: 'Opportunity' },
   { id: 'sources', label: 'Sources' },
 ]
 
 export default function SideRail({
   open, setOpen, basemap, setBasemap, layers, setLayers, zoom, lineMinZoom, parcelMinZoom,
-  saved, onPickSaved, onRemoveSaved, rezonings, county, onPickPetition,
+  saved, onPickSaved, onRemoveSaved, rezonings, county, onPickPetition, opportunity,
 }) {
   const toggle = (id) => setOpen((cur) => (cur === id ? null : id))
 
@@ -77,6 +80,7 @@ export default function SideRail({
             {open === 'saved' && <SavedList saved={saved} onPick={onPickSaved} onRemove={onRemoveSaved} />}
             {open === 'rezonings' && <Rezonings rezonings={rezonings} county={county} onPick={onPickPetition} />}
             {open === 'key' && <ZoningKey />}
+            {open === 'opportunity' && <OpportunityPanel {...opportunity} />}
             {open === 'sources' && <Sources />}
             {open === 'account' && <Account />}
           </div>

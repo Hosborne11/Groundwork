@@ -427,3 +427,30 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .editor-box .seg { margin-bottom: 6px; }
 .editor-box .muted-small { margin: 4px 0 8px; color: var(--ink-2); }
 .btn:disabled { opacity: 0.45; cursor: default; }
+
+/* ---------- opportunity panel ---------- */
+.opp-legend { margin: 6px 0 12px; }
+.opp-legend span { display: block; height: 10px; border-radius: 5px; }
+.opp-legend div { display: flex; justify-content: space-between; color: var(--ink-3); }
+.opp-sel { margin-bottom: 14px; padding: 12px; border: 2px solid var(--survey); border-radius: 8px; }
+.opp-sel-head { position: relative; display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.opp-sel-head div { display: flex; flex-direction: column; font-size: 13px; }
+.opp-sel-head div span { color: var(--ink-2); font-size: 12px; }
+.opp-sel-head .close { position: absolute; right: -6px; top: -6px; }
+.opp-score { display: inline-grid; place-items: center; min-width: 44px; height: 44px; border-radius: 8px; font-size: 20px; font-weight: 800; color: #1C2A33; }
+.opp-score.sm { min-width: 34px; height: 30px; font-size: 14px; border-radius: 6px; }
+.opp-factor { margin-bottom: 8px; }
+.opp-f-top { display: flex; justify-content: space-between; font-size: 12.5px; font-weight: 600; }
+.opp-f-top span:last-child { color: var(--ink-2); font-weight: 500; font-variant-numeric: tabular-nums; }
+.opp-bar { height: 6px; margin: 3px 0; border-radius: 3px; background: var(--paper); overflow: hidden; }
+.opp-bar i { display: block; height: 100%; background: var(--ink); }
+.opp-factor small, .opp-rz small { display: block; font-size: 11.5px; line-height: 1.35; color: var(--ink-2); }
+.opp-rz ul { list-style: none; margin: 4px 0 0; padding: 0; font-size: 12px; }
+.opp-rz li span { color: var(--ink-3); }
+.opp-weights { margin-bottom: 14px; }
+.opp-w-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.opp-top ol { list-style: none; margin: 6px 0 12px; padding: 0; }
+.opp-top li button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 4px; border: 0; border-bottom: 1px solid var(--rule); background: none; text-align: left; font-size: 12.5px; }
+.opp-top li button:hover, .opp-top li button.on { background: var(--paper); }
+.opp-why small { display: block; color: var(--ink-3); }
+.opp code { font-size: 12px; background: var(--paper); padding: 1px 4px; border-radius: 3px; }
