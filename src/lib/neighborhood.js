@@ -189,6 +189,13 @@ export function neighborhoodDraft(parcel, opts) {
     .map((t, i) => ({ i, share: t.share, width: Math.max(t.width, minWidth) }))
   const maxLots = conservation ? Math.floor(grossSf / base.minLotSf) : Infinity
   const D_MIN = 100, D_MAX = 220
+  // When lots must widen to meet the minimum area at this depth, every size shifts by the same
+  // amount so the mix stays a mix (70/90/110 becomes 92/112/132, not 92/92/110).
+  const sizedTypes = (depth) => {
+    const need = Math.ceil(minLotSf / depth)
+    const shift = Math.max(0, need - Math.min(...mix.map((t) => t.width)))
+    return mix.map((t) => ({ ...t, width: t.width + shift, depth }))
+  }
 
   // existing streets for the entrance
   const streetsFt = (opts.streets || []).flatMap((s) => (s.geometry.type === 'LineString' ? [s.geometry.coordinates] : s.geometry.coordinates)).map((l) => l.map(toFt))
@@ -245,7 +252,7 @@ export function neighborhoodDraft(parcel, opts) {
   function layoutN(ang, U, minX, minY, maxX, maxY, nTarget, depth, infill, pondEnd = 'far') {
     const H = maxY - minY, W = maxX - minX
     // lots widen when needed so width x depth still meets the minimum area
-    const types = mix.map((t) => ({ ...t, width: Math.max(t.width, Math.ceil(minLotSf / depth)), depth }))
+    const types = sizedTypes(depth)
 
     // entrance: edge point nearest an existing street, preferring the middle of that side
     const ur = U.geometry.coordinates[0]
@@ -556,14 +563,20 @@ export function neighborhoodDraft(parcel, opts) {
   function layoutFromNetwork(network, removedLL) {
     const ang = 0
     const U = usable
-    const toShapes = (list) => (list || []).map((x) => ({ id: x.id, f: clip(turf.feature(mapGeom(x.geom, toFt)), U) })).filter((x) => x.f)
+    let outside = false
+    const toShapes = (list) => (list || []).map((x) => {
+      const whole = turf.feature(mapGeom(x.geom, toFt))
+      const f = clip(whole, U)
+      if (f && areaFt(f.geometry) < 0.95 * areaFt(whole.geometry)) outside = true // part of it is off the parcel
+      return { id: x.id, f }
+    }).filter((x) => x.f)
     const ponds = toShapes(network.ponds || (network.pond ? [{ id: 'p1', geom: network.pond }] : []))
     const parks = toShapes(network.parks)
     const B = (ponds.length || parks.length) ? minus(U, ...ponds.map((x) => x.f), ...parks.map((x) => x.f)) : U
     if (!B) return null
     const pond = ponds.length ? unionAll(ponds.map((x) => x.f)) : null
     const depth = Math.max(D_MIN, Math.min(D_MAX, network.depth || 140))
-    const types = mix.map((t) => ({ ...t, width: Math.max(t.width, Math.ceil(minLotSf / depth)), depth }))
+    const types = sizedTypes(depth)
     const removed = removedLL.map(toFt)
     const streets = network.streets.filter((st) => st.pts.length >= 2).map((st) => ({ kind: st.kind, pts: st.pts.map(toFt), sideTypes: st.sideTypes ? { ...st.sideTypes } : undefined }))
     if (!streets.length) return null
@@ -647,7 +660,7 @@ export function neighborhoodDraft(parcel, opts) {
         accept([pt(r0, t0), pt(r0, t1), pt(r1, t1), pt(r1, t0)], type)
       }
     }
-    return { ang, U, B, ponds, parks, rows, lots, streets, bulbs, types, depth, spurs: 0, lotCount: lots.length, edited: true }
+    return { ang, U, B, ponds, parks, rows, lots, streets, bulbs, types, depth, spurs: 0, lotCount: lots.length, edited: true, outside }
   }
 
   /* ---------- build the output for the chosen orientation ---------- */
@@ -703,6 +716,8 @@ export function neighborhoodDraft(parcel, opts) {
     }
     if (roads) features.push(turf.feature(back(roads.geometry), { kind: 'road' }))
     lots.forEach((l, i) => features.push(turf.feature(back(l.f.geometry), { kind: 'lot', n: i + 1, type: l.type, sf: Math.round(l.sf), color: LOT_COLORS[l.type] })))
+    // street centerlines (drawn as a dashed center stripe when zoomed in)
+    for (const st of r.streets) if (st.pts.length >= 2) features.push(turf.feature({ type: 'LineString', coordinates: st.pts.map((p) => toLL(rot(p, r.ang))) }, { kind: 'centerline' }))
     // every shape carries its own fill color so the map style stays simple
     const FILL = { road: '#1C2A33', pond: '#3A8DDE', green: '#38A169', park: '#2F855A', flood: '#5BB5D9' }
     for (const f of features) f.properties.fill = f.properties.kind === 'lot' ? f.properties.color : FILL[f.properties.kind] || '#FFFFFF'
@@ -735,6 +750,7 @@ export function neighborhoodDraft(parcel, opts) {
       roadLenFt: Math.round(roadLenFt),
       roadAc: roadSf / 43560,
       conflicts,
+      outside: !!r.outside,
       pondAc: pondSf / 43560,
       parkAc: parkSf / 43560,
       greenAc: greenSf / 43560,
@@ -769,7 +785,7 @@ export function neighborhoodKml(plan, title) {
     const g = polys.map((p) => `<Polygon><outerBoundaryIs><LinearRing><coordinates>${p[0].map(([x, y]) => `${x.toFixed(7)},${y.toFixed(7)},0`).join(' ')}</coordinates></LinearRing></outerBoundaryIs></Polygon>`).join('')
     return `<Placemark><name>${esc(name(f.properties))}</name><Style><LineStyle><color>${kml(color(f.properties))}</color><width>1.5</width></LineStyle><PolyStyle><color>${kml(color(f.properties), '80')}</color></PolyStyle></Style>${polys.length > 1 ? `<MultiGeometry>${g}</MultiGeometry>` : g}</Placemark>`
   }
-  const shapes = plan.geojson.features.filter((f) => f.geometry.type !== 'Point')
+  const shapes = plan.geojson.features.filter((f) => f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon')
   return `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>${esc(title)}</name><description>Groundwork neighborhood draft: ${plan.lots} lots, ${plan.district}. Concept only, not an engineered plan.</description>
 ${shapes.map(placemark).join('\n')}

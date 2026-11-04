@@ -482,3 +482,21 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .trend-scale { display: flex; align-items: center; gap: 10px; }
 .trend-scale > span { font-size: 12px; font-weight: 600; color: var(--ink-2); white-space: nowrap; }
 .trend-scale .seg { flex: 1; margin-bottom: 0; }
+
+/* ---------- neighborhood card: polished layout ---------- */
+.siteplan .nb-total { margin-top: 2px; }
+.nb-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 4px 0 10px; }
+.nb-grid div { display: flex; flex-direction: column; padding: 7px 9px; border-radius: 6px; background: var(--paper); }
+.nb-grid span { font-size: 11px; color: var(--ink-2); }
+.nb-grid strong { font-size: 14px; font-variant-numeric: tabular-nums; }
+.nb-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-bottom: 10px; font-size: 11.5px; color: var(--ink-2); }
+.nb-legend .sw { display: inline-block; width: 14px; height: 10px; margin-right: 4px; vertical-align: -1px; border-radius: 2px; }
+.sw.road { background: #1C2A33; box-shadow: inset 0 0 0 1px #EDE6D8; }
+.sw.pond { background: #3A8DDE; box-shadow: inset 0 0 0 1.5px #A9D8F8; }
+.sw.park { background: #2F855A; box-shadow: inset 0 0 0 1px #1D6B45; }
+.sw.green { background: rgba(56, 161, 105, 0.35); border: 1px dashed #2F855A; }
+.sw.flood { background: rgba(91, 181, 217, 0.35); border: 1px dashed #4AA8D6; }
+.nb-settings { margin: 12px 0 6px; border-top: 1px solid var(--rule); padding-top: 8px; }
+.nb-settings summary { cursor: pointer; font-size: 13px; font-weight: 700; color: var(--ink); padding: 4px 0; }
+.nb-settings[open] summary { margin-bottom: 8px; }
+.siteplan .editor-box { margin-top: 0; }

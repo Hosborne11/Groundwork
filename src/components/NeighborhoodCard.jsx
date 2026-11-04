@@ -301,6 +301,13 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
   }
   const ok = plan && !plan.error
 
+  const pondSlider = (
+    <label className="slider">
+      <span>Stormwater pond <strong>{reserve}%</strong> of buildable land{edit && !edit.ponds?.length ? ' (draw a pond to size it)' : ''}</span>
+      <input type="range" min={edit ? 1 : 0} max={20} step={1} value={reserve} disabled={!!edit && !edit.ponds?.length} onChange={(e) => resizePond(Number(e.target.value))} />
+    </label>
+  )
+
   return (
     <div className="siteplan">
       <div className="siteplan-head">
@@ -308,35 +315,7 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
         <button className="link-btn" onClick={() => { setEditing(false); setOpen(false); setPlan(null); onPlan(null) }}>Hide draft</button>
       </div>
 
-      {modes.length > 1 && (
-        <div className="seg" role="group" aria-label="Layout type">
-          {modes.map((m) => <button key={m.id} className={mode === m.id ? 'on' : ''} onClick={() => setMode(m.id)} aria-pressed={mode === m.id}>{m.label}</button>)}
-        </div>
-      )}
-
-      <div className="mix-editor">
-        <div className="mix-head"><span>Lot mix (frontage width)</span><span>Share</span></div>
-        {mix.map((m, i) => (
-          <div key={i} className="mix-row">
-            <i className="dot" style={{ background: LOT_COLORS[i] }} aria-hidden="true" />
-            <label className="sr-only" htmlFor={`w${i}`}>Lot type {i + 1} width in feet</label>
-            <input id={`w${i}`} type="number" min={minWidth} step={5} value={m.width} onChange={(e) => setMixRow(i, 'width', e.target.value)} />
-            <span className="unit">ft</span>
-            <label className="sr-only" htmlFor={`s${i}`}>Lot type {i + 1} share in percent</label>
-            <input id={`s${i}`} type="number" min={0} max={100} step={5} value={m.share} onChange={(e) => setMixRow(i, 'share', e.target.value)} />
-            <span className="unit">%</span>
-            {mix.length > 1 && <button className="mix-x" onClick={() => { setMix((r) => r.filter((_, j) => j !== i)); clearSizes() }} aria-label={`Remove lot type ${i + 1}`}>×</button>}
-          </div>
-        ))}
-        {mix.length < 3 && <button className="link-btn" onClick={() => { setMix((r) => [...r, { width: (r[r.length - 1]?.width || minWidth) + 20, share: 20 }]); clearSizes() }}>+ Add lot size</button>}
-        <p className="muted-small">Minimum frontage here is {minWidth} ft. Lot depth is fitted to the site, and lots widen where needed to meet the {fmt(mode === 'conservation' ? std.minLotSf / 2 : active.minLotSf)} sq ft minimum.</p>
-      </div>
-
-      <label className="slider">
-        <span>Stormwater pond <strong>{reserve}%</strong> of buildable land{edit && !edit.ponds?.length ? ' (draw a pond to size it)' : ''}</span>
-        <input type="range" min={edit ? 1 : 0} max={20} step={1} value={reserve} disabled={!!edit && !edit.ponds?.length} onChange={(e) => resizePond(Number(e.target.value))} />
-      </label>
-
+      {/* editing toolbar sits on top while editing */}
       {editing && (
         <div className="editor-box">
           <div className="seg" role="group" aria-label="Editing tool">
@@ -351,10 +330,11 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
                 ? drawPts.length ? `Click around the ${tool}'s outline. Double-click or press Enter to finish (at least 3 points).` : `Click on the map to start outlining a ${tool}. Lots will move out of its way.`
                 : selected
                   ? selected.pond != null || selected.park != null
-                    ? `${selected.pond != null ? 'Pond' : 'Park'} selected. Drag it to move it, press Delete to remove it${selected.pond != null ? ', or use the slider above to resize it' : ''}.`
+                    ? `${selected.pond != null ? 'Pond' : 'Park'} selected. Drag it to move it or press Delete to remove it.`
                     : `${selected.street != null ? 'Street' : `Lot ${selected.lot}`} selected. Press Delete or use the button to remove it.`
                   : 'Click a street, lot, pond, or park to select it.'}
           </p>
+          {selected?.pond != null && pondSlider}
           <div className="nb-actions">
             {tool === 'draw' && drawPts.length >= 2 && <button className="btn btn-primary" onClick={finishDrawing}>Finish street</button>}
             {(tool === 'pond' || tool === 'park') && drawPts.length >= 3 && <button className="btn btn-primary" onClick={finishDrawing}>Finish {tool}</button>}
@@ -377,41 +357,55 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
 
       {(!busy || edit) && ok && (
         <>
+          {/* results first */}
           <div className="nb-total">
             <span className="nb-lots">{plan.lots}</span><span className="nb-unit">lots</span>
             <span className={`pass ${plan.pass ? 'yes' : 'no'}`}>{plan.pass ? 'PASS' : 'CHECK'}</span>
           </div>
+          <p className="nb-density">{fmt(plan.density, 2)} lots per acre · every lot meets the {plan.district} minimum{plan.capped ? ' · at the conservation maximum' : ''}</p>
+
           {plan.conflicts?.length > 0 && (
             <p className="note warn">
               {plan.conflicts.length === 1 ? `A ${plan.conflicts[0]} overlaps a street.` : `${plan.conflicts.length} ponds or parks overlap streets.`} Move it or reroute the street so the plan is buildable.
             </p>
           )}
-          <p className="nb-density">
-            Density {fmt(plan.density, 2)} lots / acre · every lot meets the {plan.district} minimum{plan.capped ? ' · at the conservation maximum' : ''}
-            {plan.spurs > 0 && <> · {plan.spurs} cul-de-sac{plan.spurs > 1 ? 's' : ''} added to reach leftover land</>}
-            {plan.absorbedAc >= 0.1 && <> · {fmt(plan.absorbedAc, 1)} ac of edge strips added to neighboring lots</>}
-          </p>
+          {plan.outside && <p className="note warn">Part of a pond or park is outside the parcel, so only the part inside is counted.</p>}
 
           <div className="mix-bar" aria-hidden="true">
             {plan.counts.filter((c) => c.lots).map((c) => <span key={c.i} style={{ background: c.color, flex: c.lots }} />)}
           </div>
           <ul className="mix-list">
             {plan.counts.filter((c) => c.lots).map((c) => (
-              <li key={c.i}><i className="dot" style={{ background: c.color }} />{c.width} × {c.depth}<span>{Math.round((c.lots / plan.lots) * 100)}%</span><strong>{c.lots} lots</strong></li>
+              <li key={c.i}><i className="dot" style={{ background: c.color }} />{c.width} × {c.depth} ft<span>{Math.round((c.lots / plan.lots) * 100)}%</span><strong>{c.lots} lots</strong></li>
             ))}
           </ul>
 
-          <dl className="nb-stats">
-            <dt>Total area</dt><dd>{fmt(plan.totalAc, 2)} ac</dd>
-            <dt>Net buildable</dt><dd>{fmt(plan.netBuildableAc, 2)} ac</dd>
-            <dt className="dim">Unbuildable (floodplain)</dt><dd className="dim">{fmt(plan.unbuildableAc, 2)} ac</dd>
-            <dt>Road length</dt><dd>{fmt(plan.roadLenFt)} ft</dd>
-            <dt>Road area</dt><dd>{fmt(plan.roadAc, 2)} ac</dd>
-            <dt>Pond{edit?.ponds?.length > 1 ? 's' : ''}</dt><dd>{fmt(plan.pondAc, 2)} ac</dd>
-            {plan.parkAc > 0 && <><dt>Parks</dt><dd>{fmt(plan.parkAc, 2)} ac</dd></>}
-            <dt>Green space</dt><dd>{fmt(plan.greenAc, 2)} ac</dd>
-            <dt>Open space</dt><dd>{fmt(plan.openPct, 1)}%</dd>
-          </dl>
+          <div className="nb-grid">
+            {[
+              ['Total area', `${fmt(plan.totalAc, 2)} ac`],
+              ['Net buildable', `${fmt(plan.netBuildableAc, 2)} ac`],
+              ['Roads', `${fmt(plan.roadLenFt)} ft · ${fmt(plan.roadAc, 1)} ac`],
+              ['Open space', `${fmt(plan.openPct, 1)}%`],
+              [`Pond${edit?.ponds?.length > 1 ? 's' : ''}`, `${fmt(plan.pondAc, 2)} ac`],
+              ['Green space', `${fmt(plan.greenAc, 2)} ac`],
+              ...(plan.parkAc > 0 ? [['Parks', `${fmt(plan.parkAc, 2)} ac`]] : []),
+              ...(plan.unbuildableAc > 0.01 ? [['Floodplain', `${fmt(plan.unbuildableAc, 2)} ac`]] : []),
+            ].map(([k, v]) => <div key={k}><span>{k}</span><strong>{v}</strong></div>)}
+          </div>
+
+          <div className="nb-legend" aria-label="Map key">
+            <span><i className="sw road" />Street</span>
+            <span><i className="sw pond" />Pond</span>
+            {plan.parkAc > 0 && <span><i className="sw park" />Park</span>}
+            <span><i className="sw green" />Green space</span>
+            {plan.unbuildableAc > 0.01 && <span><i className="sw flood" />Floodplain</span>}
+          </div>
+
+          {(plan.spurs > 0 || plan.absorbedAc >= 0.1) && (
+            <p className="muted-small">
+              {[plan.spurs > 0 && `${plan.spurs} cul-de-sac${plan.spurs > 1 ? 's' : ''} added to reach leftover land`, plan.absorbedAc >= 0.1 && `${fmt(plan.absorbedAc, 1)} ac of edge strips added to neighboring lots`].filter(Boolean).join(' · ')}.
+            </p>
+          )}
 
           <div className="nb-actions">
             {!editing && <button className="btn btn-primary" onClick={startEditing}>{edit ? 'Keep editing' : 'Edit layout'}</button>}
@@ -419,9 +413,38 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
             {edit && <button className="btn" onClick={() => { setEditing(false); setEdit(null); setRemoved([]); setHistory([]); setSelected(null) }}>Back to automatic draft</button>}
             <button className="btn" onClick={download}>Export KML</button>
           </div>
-          <p className="cite">Automatic draft for gauging yield and layout, not an engineered plan. The pond is placed by layout, not by terrain, and grading, tree save, stream buffers, and driveway rules aren't modeled.</p>
         </>
       )}
+
+      {/* settings tucked away until needed */}
+      <details className="nb-settings">
+        <summary>Adjust layout</summary>
+        {modes.length > 1 && (
+          <div className="seg" role="group" aria-label="Layout type">
+            {modes.map((m) => <button key={m.id} className={mode === m.id ? 'on' : ''} onClick={() => setMode(m.id)} aria-pressed={mode === m.id}>{m.label}</button>)}
+          </div>
+        )}
+        <div className="mix-editor">
+          <div className="mix-head"><span>Lot mix (frontage width)</span><span>Share</span></div>
+          {mix.map((m, i) => (
+            <div key={i} className="mix-row">
+              <i className="dot" style={{ background: LOT_COLORS[i] }} aria-hidden="true" />
+              <label className="sr-only" htmlFor={`w${i}`}>Lot type {i + 1} width in feet</label>
+              <input id={`w${i}`} type="number" min={minWidth} step={5} value={m.width} onChange={(e) => setMixRow(i, 'width', e.target.value)} />
+              <span className="unit">ft</span>
+              <label className="sr-only" htmlFor={`s${i}`}>Lot type {i + 1} share in percent</label>
+              <input id={`s${i}`} type="number" min={0} max={100} step={5} value={m.share} onChange={(e) => setMixRow(i, 'share', e.target.value)} />
+              <span className="unit">%</span>
+              {mix.length > 1 && <button className="mix-x" onClick={() => { setMix((r) => r.filter((_, j) => j !== i)); clearSizes() }} aria-label={`Remove lot type ${i + 1}`}>×</button>}
+            </div>
+          ))}
+          {mix.length < 3 && <button className="link-btn" onClick={() => { setMix((r) => [...r, { width: (r[r.length - 1]?.width || minWidth) + 20, share: 20 }]); clearSizes() }}>+ Add lot size</button>}
+          <p className="muted-small">Minimum frontage here is {minWidth} ft. Lot depth is fitted to the site, and lots widen where needed to meet the {fmt(mode === 'conservation' ? std.minLotSf / 2 : active.minLotSf)} sq ft minimum.</p>
+        </div>
+        {pondSlider}
+      </details>
+
+      <p className="cite">Automatic draft for gauging yield and layout, not an engineered plan. The pond is placed by layout, not by terrain, and grading, tree save, stream buffers, and driveway rules aren't modeled.</p>
     </div>
   )
 }
