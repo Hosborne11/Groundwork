@@ -28,6 +28,9 @@ const OUT = 'public/data/opportunity-meck.json'
 const WATER = 'public/data/charlotte-water.json'
 const CELL_MILES = 0.4 // hexagon side length; about 0.42 sq mi each
 const NOW = new Date()
+const FIRST_YEAR = 2020
+const YEARS = Array.from({ length: NOW.getFullYear() - FIRST_YEAR + 1 }, (_, i) => FIRST_YEAR + i)
+const yearIx = (ms) => { const y = new Date(ms).getFullYear(); return y >= FIRST_YEAR && y <= NOW.getFullYear() ? y - FIRST_YEAR : -1 }
 const yearsAgo = (n) => new Date(NOW.getFullYear() - n, NOW.getMonth(), NOW.getDate())
 const RECENT_FROM = yearsAgo(2) // "recent" = last two years
 const PRIOR_FROM = yearsAgo(6), PRIOR_TO = yearsAgo(4) // comparison window for price trend
@@ -82,6 +85,8 @@ const hexes = grid.features.filter((h) => turf.booleanIntersects(h, county)).map
   id: i, geom: h.geometry, c: turf.centroid(h).geometry.coordinates, bbox: turf.bbox(h),
   m: { rezApproved: 0, rezActive: 0, rezAcres: 0, rezWithdrawn: 0, sales: 0, saleAcres: 0, vacantAc: 0, bigVacantAc: 0, bigVacantN: 0, water: 0, sewer: 0, growthShare: 0 },
   ppa: { small: { recent: [], prior: [] }, tract: { recent: [], prior: [] } }, rezList: [], place: null, roads: {}, towns: {},
+  // year-by-year counts for the trends view
+  t: { filed: YEARS.map(() => 0), approved: YEARS.map(() => 0), sales: YEARS.map(() => 0) },
 }))
 console.log(`  ${hexes.length} hexagons`)
 
@@ -111,14 +116,18 @@ for (const f of hist) {
   const h = hexAt(centerOf(f))
   if (!h) continue
   const when = p.Approved || p.Received
+  const fy = yearIx(p.Received); if (fy >= 0) h.t.filed[fy]++
+  if (p.Status === 'App') { const ay = yearIx(p.Approved || p.Received); if (ay >= 0) h.t.approved[ay]++ }
   if (p.Status === 'App' && when >= yearsAgo(3).getTime()) { h.m.rezApproved++; h.m.rezAcres += Number(p.PetAcres) || 0; h.rezList.push([p.Petition, (p.RequestedZoning || '').trim(), 'Approved']) }
   if (p.Status === 'Wd' && when >= yearsAgo(3).getTime()) h.m.rezWithdrawn++
 }
-const active = await getAll(SOURCES.active, { where: '1=1', outFields: 'Petition,ReqZone,PetAcres', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0001, geometryPrecision: 5 }, 'petitions in process')
+const active = await getAll(SOURCES.active, { where: '1=1', outFields: 'Petition,ReqZone,PetAcres,Received', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0001, geometryPrecision: 5 }, 'petitions in process')
 for (const f of active) {
   const h = hexAt(centerOf(f))
   if (!h) continue
   h.m.rezActive++; h.m.rezAcres += Number(f.properties.PetAcres) || 0
+  // petitions in process may not be in the history layer yet; count their filing year once
+  if (!seen.has(f.properties.Petition)) { const fy = yearIx(f.properties.Received); if (fy >= 0) h.t.filed[fy]++ }
   h.rezList.push([f.properties.Petition, (f.properties.ReqZone || '').trim(), 'In process'])
 }
 
@@ -139,7 +148,7 @@ for (const f of vacant) {
 /* ---------------- 4. vacant-land sales and prices ---------------- */
 console.log('Land sales…')
 const sales = await getAll(SOURCES.parcels, {
-  where: `txt_vacantorimproved LIKE 'VAC%' AND saledate >= DATE '${PRIOR_FROM.toISOString().slice(0, 10)}' AND saleprice > 1000`,
+  where: `txt_vacantorimproved LIKE 'VAC%' AND saledate >= DATE '${(PRIOR_FROM < new Date(FIRST_YEAR, 0, 1) ? PRIOR_FROM : new Date(FIRST_YEAR, 0, 1)).toISOString().slice(0, 10)}' AND saleprice > 1000`,
   outFields: 'parcelid,saleprice,saledate,deed_book,deed_page,legalacres,yearid', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.00005, geometryPrecision: 6,
 }, 'vacant-land sales')
 // one row per parcel sale, then group parcels sold on the same deed (the county repeats the full price on each)
@@ -165,6 +174,7 @@ for (const d of deeds.values()) {
   const h = hexAt(d.pt)
   if (!h) continue
   if (d.date >= RECENT_FROM.getTime()) { h.m.sales++; h.m.saleAcres += d.acres }
+  const sy = yearIx(d.date); if (sy >= 0) h.t.sales[sy]++
   const ppa = d.acres >= 0.1 ? d.price / d.acres : null // tiny slivers make price per acre meaningless
   if (!ppa || ppa > 20e6) continue
   // compare like with like: small lots and larger tracts sell at very different prices per acre
@@ -260,7 +270,8 @@ for (const h of hexes) {
 const out = {
   generated: NOW.toISOString(), county: 'Mecklenburg', cellMiles: CELL_MILES,
   windows: { recentFrom: RECENT_FROM.toISOString().slice(0, 10), priorFrom: PRIOR_FROM.toISOString().slice(0, 10), priorTo: PRIOR_TO.toISOString().slice(0, 10), rezoningsFrom: yearsAgo(3).toISOString().slice(0, 10) },
-  hexes: hexes.map((h) => ({ id: h.id, name: h.name, g: round(h.geom).coordinates[0], m: round(h.m, 3), place: h.place, rz: h.rezList.slice(0, 8) })),
+  years: YEARS, partialYear: { year: NOW.getFullYear(), through: NOW.toISOString().slice(0, 10) },
+  hexes: hexes.map((h) => ({ id: h.id, name: h.name, g: round(h.geom).coordinates[0], m: round(h.m, 3), t: h.t, place: h.place, rz: h.rezList.slice(0, 8) })),
 }
 await fs.mkdir('public/data', { recursive: true })
 await fs.writeFile(OUT, JSON.stringify(out))

@@ -113,3 +113,26 @@ export function areaName(raw) {
 }
 
 export const SCORE_COLORS = [[0, '#2C7BB6'], [25, '#ABD9E9'], [50, '#FFFFBF'], [70, '#FDAE61'], [85, '#D7191C']]
+
+/* ---------------- trends over time ---------------- */
+export const TREND_METRICS = [
+  { key: 'filed', label: 'Rezonings filed', unit: 'petition' },
+  { key: 'approved', label: 'Rezonings approved', unit: 'approval' },
+  { key: 'sales', label: 'Land sales', unit: 'vacant-land sale' },
+]
+
+/** Hexagons colored by one measure in one year, on a scale shared by all years. */
+export function trendCollection(data, metric, yearIx) {
+  const max = Math.max(1, ...data.hexes.flatMap((h) => h.t?.[metric] || []))
+  return {
+    type: 'FeatureCollection',
+    features: data.hexes.map((h) => {
+      const v = h.t?.[metric]?.[yearIx] || 0
+      // square root keeps small counts visible next to a few very busy areas
+      return { type: 'Feature', properties: { id: h.id, v, score: v ? Math.round(100 * Math.sqrt(v / max)) : 0 }, geometry: { type: 'Polygon', coordinates: [h.g] } }
+    }),
+  }
+}
+
+/** County-wide totals per year for one measure. */
+export const countyTotals = (data, metric) => data.years.map((_, i) => data.hexes.reduce((t, h) => t + (h.t?.[metric]?.[i] || 0), 0))

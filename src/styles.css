@@ -457,3 +457,24 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
 .opp-name { font-size: 14px; line-height: 1.25; }
 .opp-why strong { display: block; font-size: 12.5px; font-weight: 700; }
+
+/* ---------- trends ---------- */
+.opp-tabs { margin-bottom: 10px; }
+.trend-year { display: flex; align-items: center; gap: 10px; margin: 10px 0; }
+.trend-year input { flex: 1; accent-color: var(--survey); }
+.trend-year strong { font-size: 18px; font-variant-numeric: tabular-nums; min-width: 44px; text-align: right; }
+.trend-chart { margin-bottom: 12px; }
+.trend-head { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 4px; }
+.trend-head strong { font-variant-numeric: tabular-nums; }
+.bars { width: 100%; display: block; }
+.bars rect { fill: #9fb0bb; }
+.bars rect.on { fill: var(--survey); }
+.bars-years { display: flex; }
+.bars-years span { flex: 1; text-align: center; font-size: 10.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.bars-years span.on { color: var(--survey); font-weight: 700; }
+/* segmented buttons inside the opportunity panel */
+.opp .seg { display: flex; flex-wrap: wrap; gap: 2px; padding: 3px; margin-bottom: 8px; border-radius: 6px; background: var(--paper); }
+.opp .seg button { flex: 1; padding: 6px 8px; border: 0; border-radius: 4px; background: none; font-size: 12.5px; font-weight: 600; color: var(--ink-2); white-space: nowrap; }
+.opp .seg button.on { background: var(--card); color: var(--ink); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
+.opp .seg button:disabled { opacity: 0.4; }
+.trend-mini { margin-bottom: 8px; }

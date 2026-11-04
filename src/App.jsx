@@ -10,7 +10,7 @@ import { charlotteWaterLines } from './lib/charlotteWater'
 import ParcelPanel from './components/ParcelPanel'
 import Search from './components/Search'
 import SideRail from './components/SideRail'
-import { loadOpportunity, scoreHexes, DEFAULT_WEIGHTS, SCORE_COLORS } from './lib/opportunity'
+import { loadOpportunity, scoreHexes, DEFAULT_WEIGHTS, SCORE_COLORS, trendCollection } from './lib/opportunity'
 import CountyPicker from './components/CountyPicker'
 import { loadCounties, countyAt } from './lib/counties'
 
@@ -47,6 +47,15 @@ export default function App() {
   const showOpp = layers.opportunity || menu === 'opportunity'
   useEffect(() => { if (showOpp && oppData === undefined) loadOpportunity().then(setOppData) }, [showOpp, oppData])
   const oppScored = useMemo(() => (oppData ? scoreHexes(oppData, oppWeights) : null), [oppData, oppWeights])
+  // trends view: one measure in one year
+  const [oppMode, setOppMode] = useState('score')
+  const [trendMetric, setTrendMetric] = useState('filed')
+  const [trendYear, setTrendYear] = useState(null)
+  const yearIx = trendYear ?? (oppData?.years ? oppData.years.length - 1 : 0)
+  const oppFc = useMemo(() => {
+    if (!oppData) return null
+    return oppMode === 'trends' && oppData.years ? trendCollection(oppData, trendMetric, yearIx) : oppScored?.fc
+  }, [oppData, oppMode, trendMetric, yearIx, oppScored])
   const [rezonings, setRezonings] = useState(null)
   // set when a parcel is opened from the Rezonings list, so the outlook grades the requested district
   const [fromPetition, setFromPetition] = useState(null)
@@ -310,12 +319,12 @@ export default function App() {
     const m = map.current
     if (!m) return
     const apply = () => {
-      m.getSource('opportunity')?.setData(oppScored ? oppScored.fc : turf.featureCollection([]))
+      m.getSource('opportunity')?.setData(oppFc || turf.featureCollection([]))
       for (const id of ['opp-fill', 'opp-line']) m.setLayoutProperty(id, 'visibility', showOpp ? 'visible' : 'none')
       m.setFilter('opp-sel', ['==', ['get', 'id'], showOpp && oppSel != null ? oppSel : -1])
     }
     m.isStyleLoaded() ? apply() : m.once('load', apply)
-  }, [oppScored, showOpp, oppSel])
+  }, [oppFc, showOpp, oppSel])
 
   const drawPlan = useCallback((fc) => {
     const m = map.current
@@ -369,6 +378,7 @@ export default function App() {
         rezonings={rezonings}
         opportunity={{
           data: oppData, scored: oppScored, weights: oppWeights, setWeights: setOppWeights, selected: oppSel,
+          mode: oppMode, setMode: setOppMode, metric: trendMetric, setMetric: setTrendMetric, yearIx, setYearIx: setTrendYear,
           onSelect: (id, fly) => {
             setOppSel(id)
             const x = id != null && oppScored?.byId[id]
