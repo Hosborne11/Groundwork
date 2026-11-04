@@ -474,6 +474,8 @@ export function neighborhoodDraft(parcel, opts) {
     function trySpur(sp, dryRun) {
       const spurRow = rowPolygon(sp.pts), bulbRow = circle(sp.end, BULB_R + 5, 24)
       if (!spurRow) return 0
+      // never run an infill street through the pond
+      if (pond) for (const r of [spurRow, bulbRow]) { const o = clip(r, pond); if (o && areaFt(o.geometry) > 300) return 0 }
       const snapshot = lots.slice()
       // lots the new street crosses: drop them, or trim them if only nicked and still big enough
       const keep = []
