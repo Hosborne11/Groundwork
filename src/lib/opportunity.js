@@ -97,4 +97,19 @@ export function topDrivers(x, weights) {
     .filter((d) => d.v > 0).sort((a, b) => b.v - a.v).slice(0, 2).map((d) => d.f.label.toLowerCase())
 }
 
+// Tidy county street names for display: "N I-85 Hy & S I-85 Hy" -> "I-85", "Owen Bv" -> "Owen Blvd"
+const ABBREV = { Bv: 'Blvd', Hy: 'Hwy', Py: 'Pkwy', Wy: 'Way', Cr: 'Cir', Av: 'Ave', Tl: 'Trl', Pl: 'Pl' }
+export function areaName(raw) {
+  if (!raw) return null
+  const [streets, ...town] = raw.split(', ')
+  const parts = streets.split(' & ').map((n) => n
+    .replace(/\b(I-\d+) Hy\b/, '$1') // interstates read better without "Hwy"
+    .replace(/\b(Bv|Hy|Py|Wy|Cr|Av|Tl)\b/g, (m) => ABBREV[m]))
+  // the same road listed for both directions ("N I-85" and "S I-85") counts once
+  const base = (n) => n.replace(/^[NSEW] /, '')
+  const unique = parts.filter((n, i) => parts.findIndex((o) => base(o) === base(n)) === i)
+  const shown = unique.length < parts.length ? unique.map(base) : unique
+  return [shown.join(' & '), ...town].join(', ')
+}
+
 export const SCORE_COLORS = [[0, '#2C7BB6'], [25, '#ABD9E9'], [50, '#FFFFBF'], [70, '#FDAE61'], [85, '#D7191C']]
