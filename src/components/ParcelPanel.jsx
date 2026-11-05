@@ -5,6 +5,7 @@ import { charlotteZoning, placeType } from '../lib/charlotte'
 import { charlotteWaterNear } from '../lib/charlotteWater'
 import { deedGroup } from '../lib/parcels'
 import { yorkZoning, yorkServiceProvider, yorkFutureLandUse } from '../lib/york'
+import { unionZoning } from '../lib/union'
 import BuildSection from './BuildSection'
 import NeighborhoodCard from './NeighborhoodCard'
 import { N1, parseZoning } from '../data/charlotteUdo'
@@ -79,6 +80,13 @@ const charlotteUtility = (kind) => async (parcel) => {
   }
 }
 // York County: zoning (with the county's own legend names), utility provider, 2035 land use
+// Union County: zoning from the town's layer, or county zoning for unincorporated land
+async function unionZoningCheck(parcel) {
+  const z = await unionZoning(parcel)
+  if (!z.code) return { tone: 'none', value: z.town, detail: `${z.town} zoning isn't published in the county's map; check with the town.` }
+  return { tone: 'none', value: z.code, detail: [`${z.source} zoning`, z.source === 'Union County' && z.town, z.petition && `rezoning petition ${z.petition}`].filter(Boolean).join(' · ') }
+}
+
 async function yorkZoningCheck(parcel) {
   const z = await yorkZoning(parcel)
   if (!z.code) {
@@ -153,11 +161,14 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
   const p = parcel.properties
   const isMeck = p.county === 'Mecklenburg'
   const isYork = p.county === 'York'
+  const isUnion = p.county === 'Union'
 
   const flood = useCheck(floodCheck, parcel)
   const soils = useCheck(soilsCheck, parcel)
-  const sewer = useCheck(isMeck ? cltSewerCheck : sewerCheck, parcel, !isYork)
-  const water = useCheck(isMeck ? cltWaterCheck : waterCheck, parcel, !isYork)
+  // pipe distances only where pipes are published (Charlotte Water records, Concord mains)
+  const sewer = useCheck(isMeck ? cltSewerCheck : sewerCheck, parcel, !isYork && !isUnion)
+  const water = useCheck(isMeck ? cltWaterCheck : waterCheck, parcel, !isYork && !isUnion)
+  const uZoning = useCheck(unionZoningCheck, parcel, isUnion)
   const cabZoning = useCheck(cabarrusZoningCheck, parcel, p.county === 'Cabarrus')
   const yZoning = useCheck(yorkZoningCheck, parcel, isYork)
   const yUtility = useCheck(yorkUtilityCheck, parcel, isYork)
@@ -230,6 +241,7 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
         <CheckRow label="Water" swatch="#2F7DE1" state={water} />
         <CheckRow label="Zoning" state={cabZoning} />
         <CheckRow label="Zoning" state={yZoning} />
+        <CheckRow label="Zoning" state={uZoning} />
         <CheckRow label="Utilities" swatch="#2F7DE1" state={yUtility} />
         <CheckRow label="2035 plan" state={yLandUse} />
         {isMeck && <p className="note">Charlotte Water doesn't publish its pipe network. These distances come from the mains it described in nearby rezoning reviews, so they confirm a main exists but may not show the closest one.</p>}
@@ -239,17 +251,20 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
         <h3>Ownership and value</h3>
         <dl className="facts">
           <dt>Mailing address</dt><dd>{p.mail || '—'}</dd>
-          <dt>{isMeck ? 'Market value' : isYork ? 'Appraised value' : 'Assessed value'}</dt><dd>{money(p.assessed)}</dd>
-          <dt>Land</dt><dd>{money(p.land)}</dd>
-          <dt>Buildings</dt><dd>{money(p.building)}</dd>
+          <dt>{isMeck || isUnion ? 'Market value' : isYork ? 'Appraised value' : 'Assessed value'}</dt><dd>{money(p.assessed)}</dd>
+          {(!isUnion || p.land) && <><dt>Land</dt><dd>{money(p.land)}</dd></>}
+          {(!isUnion || p.building) && <><dt>Buildings</dt><dd>{money(p.building)}</dd></>}
           <dt>Last sale</dt>
           <dd>
             {sale}
             {deed && <MultiParcelSale deed={deed} price={p.salePrice} />}
           </dd>
+          {p.priorSales?.length > 0 && (
+            <><dt>Earlier sales</dt><dd>{p.priorSales.map((x) => `${money(x.price)} · ${new Date(x.date).getMonth() + 1}/${new Date(x.date).getFullYear()}`).join('; ')}</dd></>
+          )}
           <dt>Deed</dt><dd>{p.deed || '—'}</dd>
           <dt>Legal description</dt><dd>{p.legal || '—'}</dd>
-          <dt>{isYork ? 'Subdivision' : 'Neighborhood'}</dt><dd>{p.neighborhood || '—'}</dd>
+          <dt>{isYork || isUnion ? 'Subdivision' : 'Neighborhood'}</dt><dd>{p.neighborhood || '—'}</dd>
           {p.yearBuilt && <><dt>Year built</dt><dd>{p.yearBuilt}</dd></>}
         </dl>
       </section>
@@ -257,6 +272,7 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
       <p className="sources">
         {isMeck ? 'Mecklenburg County / City of Charlotte GIS, Charlotte UDO, Charlotte Water rezoning comments, FEMA NFHL, USDA NRCS.'
           : isYork ? 'York County GIS, City of Rock Hill zoning, FEMA NFHL, USDA NRCS.'
+          : isUnion ? 'Union County GIS (parcels and county and town zoning), FEMA NFHL, USDA NRCS.'
           : 'Cabarrus County GIS, City of Concord Utilities, FEMA NFHL, USDA NRCS.'}
         {' '}Planning estimates, not survey or legal advice.
       </p>

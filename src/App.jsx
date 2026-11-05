@@ -82,7 +82,7 @@ export default function App() {
       const feature = await parcelAtPoint(lngLat)
       if (!feature) {
         setSelected(null)
-        setError('No parcel here. Coverage is Mecklenburg, Cabarrus, and York counties for now.')
+        setError('No parcel here. Coverage is Mecklenburg, Cabarrus, York, and Union counties for now.')
         return
       }
       setSelected(feature)

@@ -7,6 +7,7 @@ export const SOURCE_NOTES = {
   Mecklenburg: 'Charlotte rezoning petitions currently in process.',
   Cabarrus: 'City of Concord rezoning cases. Concord stopped updating this list after 2024, and other Cabarrus towns don\'t publish cases.',
   York: 'Rezonings York County approved in the last two years (unincorporated areas). Pending cases and town rezonings aren\'t published.',
+  Union: 'Union County doesn\'t publish rezoning cases with dates, so there\'s no list here yet. Zoning (county and towns) shows on each parcel.',
 }
 
 const YORK_ZONING = `/gis/yorksc/${encodeURIComponent('York County Zoning (regions)')}/FeatureServer/0`
@@ -102,7 +103,7 @@ async function concord() {
 export async function loadRezonings() {
   const [m, c, y] = await Promise.allSettled([mecklenburg(), concord(), york()])
   const pick = (r) => (r.status === 'fulfilled' ? { features: r.value } : { features: [], error: 'Could not load right now.' })
-  const byCounty = { Mecklenburg: pick(m), Cabarrus: pick(c), York: pick(y) }
+  const byCounty = { Mecklenburg: pick(m), Cabarrus: pick(c), York: pick(y), Union: { features: [] } }
   const all = Object.values(byCounty).flatMap((x) => x.features)
   return { byCounty, all: turf.featureCollection(all) }
 }

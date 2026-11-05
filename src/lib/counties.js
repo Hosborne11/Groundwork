@@ -6,6 +6,7 @@ export const COUNTIES = [
   { id: '37119', name: 'Mecklenburg', note: 'Charlotte and surrounding towns' },
   { id: '37025', name: 'Cabarrus', note: 'Concord, Kannapolis, Harrisburg' },
   { id: '45091', name: 'York', note: 'Rock Hill, Fort Mill, Tega Cay, Clover (SC)' },
+  { id: '37179', name: 'Union', note: 'Monroe, Indian Trail, Waxhaw, Weddington' },
 ]
 
 let loading = null

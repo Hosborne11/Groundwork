@@ -6,6 +6,15 @@ const MECK = '/gis/clt/PLN/AllParcelData/MapServer/0'
 const MECK_LINES = '/gis/clt/CountyData/Parcels/MapServer/0'
 const CAB = '/gis/cabarrus/OpenData/Tax_Parcels/MapServer/1'
 const YORK = '/gis/yorksc/Parcels/FeatureServer/0'
+// Union County, NC: full tax parcel records (owner, values, last three sales)
+const UNION = '/gis/union/OperationalLayers/MapServer/215'
+const UNION_FIELDS = [
+  'PID', 'ACCTNO', 'CURR_NAME1', 'CURR_NAME2', 'CURR_ADDR1', 'CURR_ADDR2', 'CURR_CITY', 'CURR_STATE', 'CURR_ZIPCODE',
+  'PHYSSTRADD', 'LEGDESC_1', 'FMV_LAND', 'FMV_IMPRV', 'FMV_TOTAL', 'mapped_acres', 'gross_acres', 'YEARBLT', 'STRUCTTYPE',
+  'property_use', 'subdivision', 'NBHDNAME', 'DIST_TWN',
+  's1_SALESAMT', 's1_SALEDATE', 's1_DEED_BOOK', 's1_DEED_PAGE', 's1_DEEDQUAL_CODEDESC',
+  's2_SALESAMT', 's2_SALEDATE', 's3_SALESAMT', 's3_SALEDATE',
+].join(',')
 const YORK_FIELDS = [
   'ParcelID', 'Owner1', 'Owner2', 'MailAddr1', 'MailAddr2', 'MailApt', 'MailCity', 'MailState', 'MailZip',
   'PropertyAddress', 'LegalDescription', 'TransferBook', 'TransferPage', 'DateSold', 'SalePrice',
@@ -119,6 +128,47 @@ function normalizeYork(f) {
   }
 }
 
+// Union County, NC. Sales under $100 or deeds without stamps are transfers, not market sales.
+function normalizeUnion(f) {
+  const a = f.properties
+  const sale = (n) => {
+    const price = num(a[`s${n}_SALESAMT`]), date = a[`s${n}_SALEDATE`]
+    return date ? { price: price && price >= 100 ? price : null, date } : null
+  }
+  const s1 = sale(1)
+  const sold = s1 ? new Date(s1.date) : null
+  const noStamps = /NO STAMPS|FAMILY|NOT OPEN MARKET|AFFILIATED/i.test(a.s1_DEEDQUAL_CODEDESC || '')
+  const land = num(a.FMV_LAND)
+  return {
+    type: 'Feature',
+    geometry: f.geometry,
+    properties: {
+      id: clean(a.PID),
+      county: 'Union',
+      owner: [clean(a.CURR_NAME1), clean(a.CURR_NAME2)].filter(Boolean).join(' & '),
+      mail: [clean(a.CURR_ADDR1), clean(a.CURR_ADDR2), [clean(a.CURR_CITY), clean(a.CURR_STATE), clean(a.CURR_ZIPCODE)].filter(Boolean).join(' ')].filter(Boolean).join(', '),
+      address: clean(a.PHYSSTRADD),
+      acres: num(a.mapped_acres) || num(a.gross_acres) || acresOf(f),
+      assessed: num(a.FMV_TOTAL),
+      land: land > 0 ? land : null, // Union's land/building split is often blank
+      building: land > 0 ? num(a.FMV_IMPRV) : null,
+      salePrice: s1?.price && !noStamps ? s1.price : null,
+      nominalSale: !!s1 && (!s1.price || noStamps),
+      saleYear: sold ? sold.getFullYear() : null,
+      saleMonth: sold ? sold.getMonth() + 1 : null,
+      priorSales: [sale(2), sale(3)].filter((x) => x && x.price),
+      deed: a.s1_DEED_BOOK ? `Book ${clean(a.s1_DEED_BOOK)}, page ${clean(a.s1_DEED_PAGE)}` : null,
+      deedBook: clean(a.s1_DEED_BOOK), deedPage: clean(a.s1_DEED_PAGE),
+      legal: clean(a.LEGDESC_1),
+      neighborhood: clean(a.subdivision) || clean(a.NBHDNAME),
+      landUse: clean(a.property_use),
+      vacant: !num(a.YEARBLT) && !clean(a.STRUCTTYPE),
+      yearBuilt: num(a.YEARBLT) || null,
+      taxDistrict: clean(a.DIST_TWN),
+    },
+  }
+}
+
 // AllParcelData can hold one row per tax year; keep the newest.
 const newestMeck = (features) => [...features].sort((x, y) => (y.properties.yearid || 0) - (x.properties.yearid || 0))[0]
 
@@ -136,15 +186,17 @@ const pointQuery = (lng, lat, outFields) => ({
 })
 
 export async function parcelAtPoint([lng, lat]) {
-  const [meck, cab, york] = await Promise.allSettled([
+  const [meck, cab, york, union] = await Promise.allSettled([
     getJSON(`${MECK}/query`, pointQuery(lng, lat, MECK_FIELDS)),
     getJSON(`${CAB}/query`, pointQuery(lng, lat, '*')),
     getJSON(`${YORK}/query`, pointQuery(lng, lat, YORK_FIELDS)),
+    getJSON(`${UNION}/query`, pointQuery(lng, lat, UNION_FIELDS)),
   ])
   if (meck.status === 'fulfilled' && meck.value.features?.length) return normalizeMeck(newestMeck(meck.value.features))
   if (cab.status === 'fulfilled' && cab.value.features?.length) return normalizeCab(cab.value.features[0])
   if (york.status === 'fulfilled' && york.value.features?.length) return normalizeYork(york.value.features[0])
-  if ([meck, cab, york].every((r) => r.status === 'rejected')) throw new Error('Parcel services are not responding')
+  if (union.status === 'fulfilled' && union.value.features?.length) return normalizeUnion(union.value.features[0])
+  if ([meck, cab, york, union].every((r) => r.status === 'rejected')) throw new Error('Parcel services are not responding')
   return null
 }
 
@@ -165,15 +217,22 @@ export async function searchParcels(term) {
     : looksLikeAddress
       ? `UPPER(PropertyAddress) LIKE '${t}%'`
       : `UPPER(Owner1) LIKE '%${t}%' OR UPPER(Owner2) LIKE '%${t}%'`
+  // Union parcel numbers can end in a letter ("08237008G")
+  const unionWhere = looksLikePin || /^\d{5,}[A-Z]?$/.test(t.replace(/[\s-]/g, ''))
+    ? `PID LIKE '${t.replace(/[\s-]/g, '')}%'`
+    : looksLikeAddress
+      ? `UPPER(PHYSSTRADD) LIKE '${t}%'`
+      : `UPPER(CURR_NAME1) LIKE '%${t}%' OR UPPER(CURR_NAME2) LIKE '%${t}%'`
   const cabWhere = looksLikePin
     ? `PIN14 LIKE '${digits}%'`
     : `UPPER(AcctName1) LIKE '%${t}%' OR UPPER(AcctName2) LIKE '%${t}%'`
 
   const common = { returnGeometry: true, outSR: 4326, resultRecordCount: 15, f: 'geojson' }
-  const [meck, cab, york] = await Promise.allSettled([
+  const [meck, cab, york, union] = await Promise.allSettled([
     getJSON(`${MECK}/query`, { ...common, resultRecordCount: 40, where: meckWhere, outFields: MECK_FIELDS }),
     looksLikeAddress ? Promise.resolve({ features: [] }) : getJSON(`${CAB}/query`, { ...common, where: cabWhere, outFields: '*' }),
     getJSON(`${YORK}/query`, { ...common, where: yorkWhere, outFields: YORK_FIELDS }),
+    getJSON(`${UNION}/query`, { ...common, where: unionWhere, outFields: UNION_FIELDS }),
   ])
   const out = []
   if (meck.status === 'fulfilled') {
@@ -186,7 +245,8 @@ export async function searchParcels(term) {
   }
   if (cab.status === 'fulfilled') for (const f of cab.value.features || []) out.push(normalizeCab(f))
   if (york.status === 'fulfilled') for (const f of york.value.features || []) out.push(normalizeYork(f))
-  if ([meck, cab, york].every((r) => r.status === 'rejected')) throw new Error('Parcel search unavailable')
+  if (union.status === 'fulfilled') for (const f of union.value.features || []) out.push(normalizeUnion(f))
+  if ([meck, cab, york, union].every((r) => r.status === 'rejected')) throw new Error('Parcel search unavailable')
   return out.sort((a, b) => b.properties.acres - a.properties.acres).slice(0, 25)
 }
 
@@ -205,6 +265,7 @@ export async function parcelLinesInView([w, s, e, n]) {
     getJSON(`${MECK_LINES}/query`, { ...q, outFields: 'PID', resultRecordCount: 3000 }),
     getJSON(`${CAB}/query`, { ...q, outFields: 'PIN14', resultRecordCount: 2000 }),
     getJSON(`${YORK}/query`, { ...q, outFields: 'ParcelID', resultRecordCount: 2000 }),
+    getJSON(`${UNION}/query`, { ...q, outFields: 'PID', resultRecordCount: 2000 }),
   ])
   const features = results.flatMap((r) => (r.status === 'fulfilled' ? r.value.features || [] : []))
   return { type: 'FeatureCollection', features }
@@ -223,6 +284,7 @@ export async function deedGroup(parcel) {
     Mecklenburg: { url: MECK, book: 'deed_book', page: 'deed_page', fields: MECK_FIELDS, norm: normalizeMeck },
     Cabarrus: { url: CAB, book: 'DeedBook', page: 'DeedPage', fields: '*', norm: normalizeCab },
     York: { url: YORK, book: 'TransferBook', page: 'TransferPage', fields: YORK_FIELDS, norm: normalizeYork },
+    Union: { url: UNION, book: 's1_DEED_BOOK', page: 's1_DEED_PAGE', fields: UNION_FIELDS, norm: normalizeUnion },
   }[p.county]
   if (!src) return null
   const d = await getJSON(`${src.url}/query`, {
