@@ -133,11 +133,21 @@ const ABBREV = { Bv: 'Blvd', Hy: 'Hwy', Py: 'Pkwy', Wy: 'Way', Cr: 'Cir', Av: 'A
 export function areaName(raw) {
   if (!raw) return null
   const [streets, ...town] = raw.split(', ')
-  const parts = streets.split(' & ').map((n) => n
+  const tidy = (n) => n
+    .replace(/\bI- ?(\d+)/g, 'I-$1') // "I- 77" -> "I-77"
     .replace(/\b(I-\d+) Hy\b/, '$1') // interstates read better without "Hwy"
-    .replace(/\b(Bv|Hy|Py|Wy|Cr|Av|Tl)\b/g, (m) => ABBREV[m]))
-  // the same road listed for both directions ("N I-85" and "S I-85") counts once
-  const base = (n) => n.replace(/^[NSEW] /, '')
+    .replace(/^US Hwy (\d+)/, 'US-$1') // Census: "US Hwy 29" -> "US-29"
+    .replace(/^State (?:Rd|Rte) (\d+)/, 'SR $1') // secondary road numbers, shown only when nothing better exists
+    .replace(/^State Hwy (\d+)/, 'Hwy $1') // state highways are real roads: "State Hwy 49" -> "Hwy 49"
+    .replace(/\b(Bv|Hy|Py|Wy|Cr|Av|Tl)\b/g, (m) => ABBREV[m])
+  // secondary-road numbers like "State Rd 1442" (not state highways, which are named roads)
+  const isRouteNumber = (n) => /^(State (Rd|Rte)|Co(unty)? Rd|SR) \d+[A-Z]?( [NSEW])?$/.test(n)
+  let parts = streets.split(' & ')
+  // a plain route number adds nothing when a real street name is there too
+  if (parts.length > 1 && parts.some((n) => !isRouteNumber(n))) parts = parts.filter((n) => !isRouteNumber(n))
+  parts = parts.map(tidy)
+  // the same road listed twice (both directions, or "Hwy 49" and "Hwy 49 S") counts once
+  const base = (n) => n.replace(/^[NSEW] /, '').replace(/ [NSEW]$/, '')
   const unique = parts.filter((n, i) => parts.findIndex((o) => base(o) === base(n)) === i)
   const shown = unique.length < parts.length ? unique.map(base) : unique
   return [shown.join(' & '), ...town].join(', ')
