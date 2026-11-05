@@ -162,7 +162,9 @@ function normalizeUnion(f) {
       legal: clean(a.LEGDESC_1),
       neighborhood: clean(a.subdivision) || clean(a.NBHDNAME),
       landUse: clean(a.property_use),
-      vacant: !num(a.YEARBLT) && !clean(a.STRUCTTYPE),
+      // Union records buildings only for homes and farms, so "no building on record" means vacant
+      // only for those; commercial and industrial parcels aren't labeled either way.
+      vacant: ['RES', 'FARM'].includes(clean(a.property_use).toUpperCase()) && !num(a.YEARBLT) && !clean(a.STRUCTTYPE),
       yearBuilt: num(a.YEARBLT) || null,
       taxDistrict: clean(a.DIST_TWN),
     },
