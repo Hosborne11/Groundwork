@@ -37,7 +37,9 @@ async function get(url, params, tries = 4) {
     try {
       const r = await fetch(`${url}/query?${qs(params)}`, { headers: HEADERS })
       if (!r.ok) throw new Error(`HTTP ${r.status}`)
-      const j = await r.json()
+      const txt = await r.text()
+      if (!txt) throw new Error('empty response from the server')
+      const j = JSON.parse(txt)
       if (j.error) throw new Error(j.error.message)
       return j
     } catch (e) {
@@ -212,8 +214,14 @@ async function cabarrus() {
   }), hexAt)
 
   // Concord's sewer and water mains (actual pipes; other utilities in the county don't publish theirs)
-  addMains(await getAll(SEWER, { where: '1=1', outFields: 'OBJECTID', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0001, geometryPrecision: 5 }, 'Concord sewer mains'), hexAt, 'sewer')
-  addMains(await getAll(WATER, { where: '1=1', outFields: 'OBJECTID', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0001, geometryPrecision: 5 }, 'Concord water mains'), hexAt, 'water')
+  // (the two layers name their ID field differently; asking for a field that doesn't exist returns nothing)
+  for (const [url, idField, kind, label] of [[SEWER, 'OBJECTID', 'sewer', 'Concord sewer mains'], [WATER, 'FID', 'water', 'Concord water mains']]) {
+    try {
+      addMains(await getAll(url, { where: '1=1', outFields: idField, returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0001, geometryPrecision: 5 }, label), hexAt, kind)
+    } catch (e) {
+      console.log(`\n  Skipped ${label}: ${e.message || 'no response'}. The rest of the build continues without it.`)
+    }
+  }
 
   await addRoadNames(county, hexes, hexAt)
   finishTrends(hexes)
