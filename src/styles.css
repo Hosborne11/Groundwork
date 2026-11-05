@@ -500,3 +500,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .nb-settings summary { cursor: pointer; font-size: 13px; font-weight: 700; color: var(--ink); padding: 4px 0; }
 .nb-settings[open] summary { margin-bottom: 8px; }
 .siteplan .editor-box { margin-top: 0; }
+
+.opp-factor.off { opacity: 0.55; }
+.opp-note { color: var(--ink-3) !important; font-style: italic; }
+.opp-county { font-style: normal; font-weight: 500; color: var(--ink-3); }

@@ -1,7 +1,9 @@
 // Opportunity scoring for the hexagon grid built by `npm run data:opportunity`.
 // Each factor becomes a percentile across the county; the score is a weighted blend (0–100).
 
-const DATA_URL = '/data/opportunity-meck.json'
+const DATA_URLS = ['/data/opportunity-meck.json', '/data/opportunity-cabarrus.json', '/data/opportunity-york.json']
+const ALL_FACTORS = ['rezoning', 'sales', 'trend', 'land', 'utilities', 'plan']
+const ALL_MEASURES = ['filed', 'approved', 'sales']
 
 const money = (v) => (v == null ? '—' : v >= 1e6 ? `$${(v / 1e6).toFixed(2)}M` : `$${Math.round(v / 1000)}K`)
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`
@@ -51,10 +53,26 @@ export const FACTORS = [
 export const DEFAULT_WEIGHTS = Object.fromEntries(FACTORS.map((f) => [f.key, f.weight]))
 
 let loading = null
+/** Loads every county's file that exists and merges them; each hexagon knows its county. */
 export function loadOpportunity() {
-  if (!loading) loading = fetch(DATA_URL).then((r) => (r.ok ? r.json() : null)).catch(() => null)
+  if (!loading) {
+    loading = Promise.all(DATA_URLS.map((u) => fetch(u).then((r) => (r.ok ? r.json() : null)).catch(() => null))).then((files) => {
+      const got = files.filter(Boolean)
+      if (!got.length) return null
+      const counties = got.map((f) => ({
+        name: f.county || 'Mecklenburg',
+        factors: f.factors || ALL_FACTORS,
+        measures: f.measures || ALL_MEASURES,
+        notes: f.notes || {},
+        generated: f.generated,
+      }))
+      const hexes = got.flatMap((f, i) => f.hexes.map((h) => ({ ...h, county: counties[i].name })))
+      return { counties, hexes, years: got[0].years, partialYear: got[0].partialYear, generated: got.map((f) => f.generated).sort()[0] }
+    })
+  }
   return loading
 }
+export const countyInfo = (data, name) => data?.counties?.find((c) => c.name === name)
 
 /** Percentile (0–1) of each value among all hexagons; null values stay null. */
 function percentiles(values) {
@@ -71,29 +89,42 @@ function percentiles(values) {
   return out
 }
 
-/** Score every hexagon with the given weights. */
+/**
+ * Score every hexagon with the given weights. Each county is scored against itself (percentiles
+ * within the county) using only the signals that county publishes; missing signals drop out and
+ * the remaining weights carry the score.
+ */
 export function scoreHexes(data, weights) {
   const hexes = data.hexes
-  const pct = Object.fromEntries(FACTORS.map((f) => [f.key, percentiles(hexes.map((h) => f.value(h.m)))]))
-  const total = FACTORS.reduce((t, f) => t + (weights[f.key] || 0), 0) || 1
-  const scored = hexes.map((h, i) => {
-    const parts = Object.fromEntries(FACTORS.map((f) => [f.key, pct[f.key][i]]))
-    // a factor with no data (price trend with too few sales) counts as middle-of-the-road
-    const s = FACTORS.reduce((t, f) => t + (weights[f.key] || 0) * (parts[f.key] ?? 0.5), 0) / total
-    return { h, score: Math.round(s * 100), parts }
-  })
+  const scored = []
+  const rankedBy = {}
+  for (const c of data.counties || [{ name: 'Mecklenburg', factors: ALL_FACTORS }]) {
+    const list = hexes.filter((h) => (h.county || 'Mecklenburg') === c.name)
+    const use = FACTORS.filter((f) => c.factors.includes(f.key))
+    const pct = Object.fromEntries(use.map((f) => [f.key, percentiles(list.map((h) => f.value(h.m)))]))
+    const total = use.reduce((t, f) => t + (weights[f.key] || 0), 0) || 1
+    const here = list.map((h, i) => {
+      const parts = Object.fromEntries(FACTORS.map((f) => [f.key, use.includes(f) ? pct[f.key][i] : undefined]))
+      // a signal with no data for this area (price trend with too few sales) counts as middle-of-the-road
+      const s = use.reduce((t, f) => t + (weights[f.key] || 0) * (parts[f.key] ?? 0.5), 0) / total
+      return { h, score: Math.round(s * 100), parts }
+    })
+    const r = [...here].sort((a, b) => b.score - a.score)
+    r.forEach((x, i) => { x.rank = i + 1; x.of = r.length })
+    rankedBy[c.name] = r
+    scored.push(...here)
+  }
   const ranked = [...scored].sort((a, b) => b.score - a.score)
-  ranked.forEach((x, i) => { x.rank = i + 1 })
   const fc = {
     type: 'FeatureCollection',
     features: scored.map((x) => ({ type: 'Feature', properties: { id: x.h.id, score: x.score }, geometry: { type: 'Polygon', coordinates: [x.h.g] } })),
   }
-  return { fc, byId: Object.fromEntries(scored.map((x) => [x.h.id, x])), ranked, count: scored.length }
+  return { fc, byId: Object.fromEntries(scored.map((x) => [x.h.id, x])), ranked, rankedBy, count: scored.length }
 }
 
 /** The two factors doing the most for a hexagon's score. */
 export function topDrivers(x, weights) {
-  return FACTORS.map((f) => ({ f, v: (weights[f.key] || 0) * (x.parts[f.key] ?? 0) }))
+  return FACTORS.filter((f) => x.parts[f.key] !== undefined).map((f) => ({ f, v: (weights[f.key] || 0) * (x.parts[f.key] ?? 0) }))
     .filter((d) => d.v > 0).sort((a, b) => b.v - a.v).slice(0, 2).map((d) => d.f.label.toLowerCase())
 }
 
@@ -137,5 +168,5 @@ export function trendCollection(data, metric, yearIx, scale = 'all') {
   }
 }
 
-/** County-wide totals per year for one measure. */
-export const countyTotals = (data, metric) => data.years.map((_, i) => data.hexes.reduce((t, h) => t + (h.t?.[metric]?.[i] || 0), 0))
+/** Totals per year for one measure, for one county or all of them. */
+export const countyTotals = (data, metric, county) => data.years.map((_, i) => data.hexes.reduce((t, h) => t + (!county || h.county === county ? h.t?.[metric]?.[i] || 0 : 0), 0))

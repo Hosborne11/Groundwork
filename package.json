@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "data:charlotte-water": "node scripts/build-charlotte-water.mjs",
-    "data:opportunity": "node scripts/build-opportunity.mjs"
+    "data:opportunity": "node scripts/build-opportunity.mjs",
+    "data:opportunity-region": "node scripts/build-opportunity-region.mjs"
   },
   "dependencies": {
     "@turf/turf": "^7.1.0",

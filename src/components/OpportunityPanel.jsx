@@ -1,15 +1,29 @@
 import { useEffect, useState } from 'react'
-import { FACTORS, DEFAULT_WEIGHTS, SCORE_COLORS, topDrivers, areaName, TREND_METRICS, countyTotals } from '../lib/opportunity'
+import { FACTORS, DEFAULT_WEIGHTS, SCORE_COLORS, topDrivers, areaName, TREND_METRICS, countyTotals, countyInfo } from '../lib/opportunity'
 
 const scoreColor = (s) => [...SCORE_COLORS].reverse().find(([t]) => s >= t)[1]
 
-export default function OpportunityPanel({ data, scored, weights, setWeights, selected, onSelect, mode, setMode, metric, setMetric, yearIx, setYearIx, scale, setScale }) {
+/** All / Mecklenburg / Cabarrus / York chips; follows the county picker. */
+function CountyChips({ data, value, onChange }) {
+  if ((data.counties || []).length < 2) return null
+  return (
+    <div className="chips-row" role="group" aria-label="County">
+      {['All', ...data.counties.map((c) => c.name)].map((c) => (
+        <button key={c} className={`chip-btn ${value === c ? 'on' : ''}`} onClick={() => onChange(c)} aria-pressed={value === c}>{c}</button>
+      ))}
+    </div>
+  )
+}
+
+export default function OpportunityPanel({ data, scored, weights, setWeights, selected, onSelect, mode, setMode, metric, setMetric, yearIx, setYearIx, scale, setScale, county: pickerCounty }) {
+  const [county, setCounty] = useState(pickerCounty || 'All')
+  useEffect(() => { if (pickerCounty) setCounty(pickerCounty) }, [pickerCounty])
   if (data === undefined) return <p className="muted">Loading opportunity data…</p>
   if (data === null) {
     return (
       <p className="flyout-note">
-        Opportunity data hasn't been built yet. In the project folder run <code>npm run data:opportunity</code>, then commit
-        <code> public/data/opportunity-meck.json</code>.
+        Opportunity data hasn't been built yet. In the project folder run <code>npm run data:opportunity</code> and
+        <code> npm run data:opportunity-region</code>, then commit the files in <code>public/data</code>.
       </p>
     )
   }
@@ -23,14 +37,15 @@ export default function OpportunityPanel({ data, scored, weights, setWeights, se
     </div>
   )
   if (mode === 'trends' && data.years) {
-    return <div className="opp">{tabs}<TrendsView data={data} metric={metric} setMetric={setMetric} yearIx={yearIx} setYearIx={setYearIx} selected={selected} onSelect={onSelect} scale={scale} setScale={setScale} /></div>
+    return <div className="opp">{tabs}<CountyChips data={data} value={county} onChange={setCounty} /><TrendsView data={data} county={county === 'All' ? null : county} metric={metric} setMetric={setMetric} yearIx={yearIx} setYearIx={setYearIx} selected={selected} onSelect={onSelect} scale={scale} setScale={setScale} /></div>
   }
 
   return (
     <div className="opp">
       {tabs}
+      <CountyChips data={data} value={county} onChange={setCounty} />
       <p className="flyout-note">
-        Where Mecklenburg land is likely to develop next, scored from public records. Click any hexagon on the map for the reasons behind its score.
+        Where land is likely to develop next, scored from public records. Each county is scored against itself using the data it publishes. Click any hexagon for the reasons behind its score.
       </p>
 
       <div className="opp-legend" aria-hidden="true">
@@ -44,17 +59,27 @@ export default function OpportunityPanel({ data, scored, weights, setWeights, se
             <span className="opp-score" style={{ background: scoreColor(sel.score) }}>{sel.score}</span>
             <div>
               {sel.h.name && <strong className="opp-name">{areaName(sel.h.name)}</strong>}
-              <span>Rank {sel.rank} of {scored.count} · top {Math.max(1, Math.round((sel.rank / scored.count) * 100))}% in the county</span>
+              <span>Rank {sel.rank} of {sel.of} in {sel.h.county} · top {Math.max(1, Math.round((sel.rank / sel.of) * 100))}%</span>
             </div>
             <button className="close" onClick={() => onSelect(null)} aria-label="Clear selection">×</button>
           </div>
           {FACTORS.map((f) => {
             const p = sel.parts[f.key]
+            const info = countyInfo(data, sel.h.county)
+            if (p === undefined) {
+              return (
+                <div key={f.key} className="opp-factor off">
+                  <div className="opp-f-top"><span>{f.label}</span><span>not used</span></div>
+                  <small>{sel.h.county} doesn't publish this, so the score uses the other signals.</small>
+                </div>
+              )
+            }
             return (
               <div key={f.key} className="opp-factor">
                 <div className="opp-f-top"><span>{f.label}</span><span>{p == null ? 'n/a' : `${Math.round(p * 100)}th pct`}</span></div>
                 <div className="opp-bar"><i style={{ width: `${(p ?? 0) * 100}%` }} /></div>
                 <small>{f.explain(sel.h.m, sel.h.place)}</small>
+                {info?.notes?.[f.key] && <small className="opp-note">{info.notes[f.key]}</small>}
               </div>
             )
           })}
@@ -84,12 +109,12 @@ export default function OpportunityPanel({ data, scored, weights, setWeights, se
         <section className="opp-top">
           <strong>Top areas</strong>
           <ol>
-            {scored.ranked.slice(0, 10).map((x) => (
+            {(county === 'All' ? scored.ranked : scored.rankedBy[county] || []).slice(0, 10).map((x) => (
               <li key={x.h.id}>
                 <button className={selected === x.h.id ? 'on' : ''} onClick={() => onSelect(x.h.id, true)}>
                   <span className="opp-score sm" style={{ background: scoreColor(x.score) }}>{x.score}</span>
                   <span className="opp-why">
-                    <strong>{areaName(x.h.name) || 'Unnamed area'}</strong>
+                    <strong>{areaName(x.h.name) || 'Unnamed area'}{county === 'All' && <em className="opp-county"> · {x.h.county}</em>}</strong>
                     <small>{topDrivers(x, weights).join(' · ') || 'mixed signals'}</small>
                   </span>
                 </button>
@@ -128,10 +153,17 @@ function Bars({ values, years, active, height = 64, onPick }) {
   )
 }
 
-function TrendsView({ data, metric, setMetric, yearIx, setYearIx, selected, onSelect, scale, setScale }) {
+function TrendsView({ data, county, metric, setMetric, yearIx, setYearIx, selected, onSelect, scale, setScale }) {
   const [playing, setPlaying] = useState(false)
   const years = data.years
-  const totals = countyTotals(data, metric)
+  const totals = countyTotals(data, metric, county)
+  const info = county ? countyInfo(data, county) : null
+  const lacks = (key) => (county ? !info?.measures.includes(key) : false)
+  const missingAnywhere = (data.counties || []).filter((c) => !c.measures.includes(metric)).map((c) => c.name)
+  // if this county doesn't publish the chosen measure, switch to one it does
+  useEffect(() => {
+    if (county && info && !info.measures.includes(metric)) setMetric(info.measures[0])
+  }, [county, info, metric, setMetric])
   const m = TREND_METRICS.find((x) => x.key === metric)
   const sel = selected != null ? data.hexes.find((h) => h.id === selected) : null
   const partial = data.partialYear && years[yearIx] === data.partialYear.year
@@ -145,9 +177,9 @@ function TrendsView({ data, metric, setMetric, yearIx, setYearIx, selected, onSe
 
   return (
     <>
-      <p className="flyout-note">How activity has moved across Mecklenburg since {years[0]}.</p>
+      <p className="flyout-note">How activity has moved across {county || 'the region'} since {years[0]}.</p>
       <div className="seg" role="group" aria-label="Measure">
-        {TREND_METRICS.map((x) => <button key={x.key} className={metric === x.key ? 'on' : ''} onClick={() => setMetric(x.key)}>{x.label}</button>)}
+        {TREND_METRICS.map((x) => <button key={x.key} className={metric === x.key ? 'on' : ''} onClick={() => setMetric(x.key)} disabled={lacks(x.key)} title={lacks(x.key) ? `${county} doesn't publish this` : undefined}>{x.label}</button>)}
       </div>
 
       <div className="trend-year">
@@ -166,9 +198,11 @@ function TrendsView({ data, metric, setMetric, yearIx, setYearIx, selected, onSe
       <p className="muted-small">{scale === 'all' ? 'One scale for every year, so a hotter color always means more activity.' : `Scaled to ${years[yearIx]}'s busiest area, so the year's relative hot spots stand out even when activity is low.`}</p>
 
       <section className="trend-chart">
-        <div className="trend-head"><span>County total: {m.label.toLowerCase()}</span><strong>{totals[yearIx].toLocaleString()}</strong></div>
+        <div className="trend-head"><span>{county ? `${county} total` : 'All counties'}: {m.label.toLowerCase()}</span><strong>{totals[yearIx].toLocaleString()}</strong></div>
         <Bars values={totals} years={years} active={yearIx} onPick={(i) => { setPlaying(false); setYearIx(i) }} />
         {partial && <small className="muted-small">{years[yearIx]} runs through {new Date(data.partialYear.through).toLocaleDateString()}, so it's a partial year.</small>}
+        {(county ? info?.notes?.[metric === 'sales' ? 'sales' : 'rezoning'] : null) && <small className="muted-small">{info.notes[metric === 'sales' ? 'sales' : 'rezoning']}</small>}
+        {!county && missingAnywhere.length > 0 && <small className="muted-small">Not available for {missingAnywhere.join(' or ')}, so those counties add nothing here.</small>}
       </section>
 
       {sel ? (

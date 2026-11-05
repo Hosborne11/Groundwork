@@ -395,6 +395,7 @@ export default function App() {
           data: oppData, scored: oppScored, weights: oppWeights, setWeights: setOppWeights, selected: oppSel,
           mode: oppMode, setMode: setOppMode, metric: trendMetric, setMetric: setTrendMetric, yearIx, setYearIx: setTrendYear,
           scale: trendScale, setScale: setTrendScale,
+          county: COUNTIES.find((c) => c.id === county)?.name || null,
           onSelect: (id, fly) => {
             setOppSel(id)
             const x = id != null && oppScored?.byId[id]
