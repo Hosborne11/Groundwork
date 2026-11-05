@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import LayerPanel from './LayerPanel'
-import SavedList from './SavedList'
+import SavedList, { SavedPlans } from './SavedList'
 import ZoningKey from './ZoningKey'
 import ZoneCode from './ZoneCode'
 import OpportunityPanel from './OpportunityPanel'
@@ -36,7 +36,7 @@ const ITEMS = [
 
 export default function SideRail({
   open, setOpen, basemap, setBasemap, layers, setLayers, zoom, lineMinZoom, parcelMinZoom,
-  saved, onPickSaved, onRemoveSaved, rezonings, county, onPickPetition, opportunity,
+  saved, onPickSaved, onRemoveSaved, onOpenPlan, rezonings, county, onPickPetition, opportunity,
 }) {
   const toggle = (id) => setOpen((cur) => (cur === id ? null : id))
 
@@ -77,7 +77,7 @@ export default function SideRail({
           <div className="flyout-body">
             {open === 'basemaps' && <Basemaps basemap={basemap} setBasemap={setBasemap} />}
             {open === 'layers' && <LayerPanel layers={layers} setLayers={setLayers} zoom={zoom} lineMinZoom={lineMinZoom} parcelMinZoom={parcelMinZoom} />}
-            {open === 'saved' && <SavedList saved={saved} onPick={onPickSaved} onRemove={onRemoveSaved} />}
+            {open === 'saved' && <><SavedPlans onOpen={onOpenPlan} /><SavedList saved={saved} onPick={onPickSaved} onRemove={onRemoveSaved} /></>}
             {open === 'rezonings' && <Rezonings rezonings={rezonings} county={county} onPick={onPickPetition} />}
             {open === 'key' && <ZoningKey />}
             {open === 'opportunity' && <OpportunityPanel {...opportunity} />}

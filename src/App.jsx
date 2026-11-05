@@ -63,7 +63,8 @@ export default function App() {
   const [county, setCounty] = useState(null)
   const countiesRef = useRef(null)
   const keepCountyLabel = useRef(false)
-  const editorRef = useRef(null) // set while the site plan editor is active; map clicks go to it // true right after 'Both counties', so the fly-to doesn't relabel it
+  const editorRef = useRef(null) // set while the site plan editor is active; map clicks go to it
+  const [pendingPlan, setPendingPlan] = useState(null) // a saved plan to open once its parcel's panel loads // true right after 'Both counties', so the fly-to doesn't relabel it
 
   useEffect(() => {
     try { localStorage.setItem('groundwork:saved', JSON.stringify(saved)) } catch { /* storage off */ }
@@ -389,6 +390,7 @@ export default function App() {
         parcelMinZoom={PARCEL_MIN_ZOOM}
         saved={saved}
         onPickSaved={(s) => { setMenu(null); flyToParcel(s.feature) }}
+        onOpenPlan={(p) => { setMenu(null); setPendingPlan({ id: p.id, parcelId: p.parcel.id }); flyToParcel(p.parcel.feature) }}
         onRemoveSaved={(pin) => setSaved((l) => l.filter((s) => s.pin !== pin))}
         rezonings={rezonings}
         opportunity={{
@@ -431,7 +433,8 @@ export default function App() {
       )}
 
       {selected && (
-        <ParcelPanel key={selected.properties.id} parcel={selected} fromPetition={fromPetition} isSaved={isSaved} onSave={toggleSave} onClose={() => { editor.register(null); closePanel() }} onPlan={drawPlan} editor={editor} />
+        <ParcelPanel key={selected.properties.id} parcel={selected} fromPetition={fromPetition} isSaved={isSaved} onSave={toggleSave} onClose={() => { editor.register(null); closePanel() }} onPlan={drawPlan} editor={editor}
+          openPlanId={pendingPlan && pendingPlan.parcelId === selected.properties.id ? pendingPlan.id : null} onPlanOpened={() => setPendingPlan(null)} />
       )}
     </div>
   )

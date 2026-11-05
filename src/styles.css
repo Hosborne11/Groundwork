@@ -504,3 +504,25 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .opp-factor.off { opacity: 0.55; }
 .opp-note { color: var(--ink-3) !important; font-style: italic; }
 .opp-county { font-style: normal; font-weight: 500; color: var(--ink-3); }
+
+/* ---------- saved site plans ---------- */
+.plan-status { margin-left: 8px; padding: 1px 7px; border-radius: 9px; font-size: 10.5px; font-weight: 700; vertical-align: 2px; background: #dcf3e6; color: var(--good); }
+.plan-status.dirty { background: #fdecc8; color: #8a5a00; }
+.plan-desc { margin: -4px 0 8px; font-size: 12.5px; color: var(--ink-2); }
+.plans { margin: 0 0 10px; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; }
+.plans-head { padding: 6px 10px; font-size: 11.5px; font-weight: 700; color: var(--ink-2); background: var(--paper); }
+.plans ul { list-style: none; margin: 0; padding: 0; }
+.plans li { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-top: 1px solid var(--rule); }
+.plans li.on { background: #fff7fb; }
+.plan-open { flex: 1; min-width: 0; display: flex; flex-direction: column; border: 0; background: none; padding: 0; text-align: left; cursor: pointer; }
+.plan-open strong { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plan-open span { font-size: 11.5px; color: var(--ink-2); }
+.plan-actions { display: flex; gap: 8px; }
+.plan-actions .link-btn { padding: 0; font-size: 11.5px; }
+.link-btn.danger { color: var(--flag); }
+.plan-form { margin: 0 0 10px; padding: 10px; border: 1px solid var(--rule); border-radius: 6px; background: var(--paper); }
+.plan-form label { display: flex; flex-direction: column; gap: 3px; margin-bottom: 8px; font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.plan-form input, .plan-form textarea { font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--rule); border-radius: 4px; resize: vertical; }
+
+.saved-plans { margin-bottom: 6px; }
+.saved-divider { margin: 10px 0 4px; font-size: 11.5px; font-weight: 700; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.04em; }

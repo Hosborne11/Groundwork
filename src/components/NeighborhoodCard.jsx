@@ -3,6 +3,7 @@ import * as turf from '@turf/turf'
 import { neighborhoodKml, LOT_COLORS } from '../lib/neighborhood'
 import { nearbyStreets } from '../lib/charlotte'
 import { N1, CONSERVATION_DISTRICTS, CONSERVATION_MIN_ACRES, MIXED_INCOME_MIN_ACRES } from '../data/charlotteUdo'
+import { usePlans, savePlan, getPlan, renamePlan, duplicatePlan, deletePlan } from '../lib/planStore'
 
 const fmt = (n, d = 0) => Number(n).toLocaleString('en-US', { maximumFractionDigits: d, minimumFractionDigits: d })
 
@@ -45,7 +46,7 @@ const defaultMix = (w) => [{ width: w, share: 50 }, { width: w + 20, share: 30 }
  * Automatic neighborhood draft for a Charlotte N1 parcel. Draws on the map through onPlan.
  * floodPolys: floodplain shapes (null while the flood check runs).
  */
-export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floodFailed, onPlan, editor }) {
+export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floodFailed, onPlan, editor, openPlanId, onPlanOpened }) {
   const std = N1[code]
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState('standard')
@@ -72,6 +73,95 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
   const live = useRef({}) // latest values for map handlers
   live.current = { edit, removed, tool, drawPts, selected, plan }
   const nextId = useRef(1)
+
+  // ---- saved plans ----
+  const parcelId = parcel.properties.id
+  const plans = usePlans(parcelId)
+  const [current, setCurrent] = useState(null) // { id, name, description, key } of the plan that's open
+  const [form, setForm] = useState(null) // { as: 'new' | 'rename', id?, name, description }
+  const [saveError, setSaveError] = useState(null)
+  const snapshot = () => ({ settings: { mode, mix, reserve, variant }, edit, removed })
+  // compare plans without remembered lot sizes, which fill in on their own after a refill
+  const keyOf = (snap) => JSON.stringify(snap, (k, v) => (k === 'sideTypes' ? undefined : v))
+  const dirty = current && keyOf(snapshot()) !== current.key
+
+  const applyPlan = (p) => {
+    setMode(p.settings.mode); setMix(p.settings.mix); setReserve(p.settings.reserve); setVariant(p.settings.variant || 0)
+    const e = p.edit ? { ...p.edit, streets: p.edit.streets.map((st) => ({ ...st, id: st.id ?? nextId.current++ })) } : null
+    if (e) nextId.current = Math.max(nextId.current, ...e.streets.map((st) => (typeof st.id === 'number' ? st.id + 1 : 1)))
+    setEdit(e); setRemoved(p.removed || []); setHistory([]); setSelected(null); setEditing(false); setOpen(true)
+    setCurrent({ id: p.id, name: p.name, description: p.description, key: keyOf({ settings: p.settings, edit: e, removed: p.removed || [] }) })
+  }
+  const openPlan = async (id) => { const p = await getPlan(id); if (p) applyPlan(p) }
+  // opened from the Saved menu
+  useEffect(() => {
+    if (!openPlanId) return
+    openPlan(openPlanId).then(() => onPlanOpened?.())
+  }, [openPlanId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const submitForm = async () => {
+    setSaveError(null)
+    const name = form.name.trim() || `Plan ${plans.length + 1}`
+    try {
+      if (form.as === 'rename') {
+        await renamePlan(form.id, name, form.description)
+        if (current?.id === form.id) setCurrent({ ...current, name, description: form.description })
+      } else {
+        const snap = snapshot()
+        const saved = await savePlan({
+          id: form.as === 'update' ? current.id : undefined,
+          name, description: form.description,
+          parcel: { id: parcelId, county: parcel.properties.county, address: parcel.properties.address, feature: parcel },
+          ...snap,
+          summary: plan && !plan.error ? { lots: plan.lots, pass: plan.pass, district: plan.district, acres: plan.totalAc } : null,
+        })
+        setCurrent({ id: saved.id, name: saved.name, description: saved.description, key: keyOf(snap) })
+      }
+      setForm(null)
+    } catch (e) { setSaveError(e.message) }
+  }
+  const quickSave = () => setForm({ as: 'update', name: current.name, description: current.description || '' })
+  const fmtDate = (iso) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+
+  const savedList = plans.length > 0 && (
+    <div className="plans">
+      <div className="plans-head">Saved plans for this parcel</div>
+      <ul>
+        {plans.map((p) => (
+          <li key={p.id} className={current?.id === p.id ? 'on' : ''}>
+            <button className="plan-open" onClick={() => applyPlan(p)} title="Open this plan">
+              <strong>{p.name}</strong>
+              <span>{[p.summary && `${p.summary.lots} lots`, p.edit && 'edited', `saved ${fmtDate(p.updated)}`].filter(Boolean).join(' · ')}</span>
+            </button>
+            <span className="plan-actions">
+              <button className="link-btn" onClick={() => setForm({ as: 'rename', id: p.id, name: p.name, description: p.description || '' })}>Rename</button>
+              <button className="link-btn" onClick={() => duplicatePlan(p.id)}>Duplicate</button>
+              <button className="link-btn danger" onClick={() => { if (window.confirm(`Delete "${p.name}"? This can't be undone.`)) { deletePlan(p.id); if (current?.id === p.id) setCurrent(null) } }}>Delete</button>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+
+  const saveForm = form && (
+    <div className="plan-form">
+      <label>
+        <span>{form.as === 'rename' ? 'Rename plan' : form.as === 'update' ? 'Save changes to' : 'Plan name'}</span>
+        <input autoFocus value={form.name} placeholder={`Plan ${plans.length + 1}`} onChange={(e) => setForm({ ...form, name: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && submitForm()} />
+      </label>
+      <label>
+        <span>Description (optional)</span>
+        <textarea rows={2} value={form.description} placeholder="e.g. 90 ft lots with a central park" onChange={(e) => setForm({ ...form, description: e.target.value })} />
+      </label>
+      {saveError && <p className="note warn">{saveError}</p>}
+      <div className="nb-actions">
+        <button className="btn btn-primary" onClick={submitForm}>{form.as === 'rename' ? 'Rename' : 'Save'}</button>
+        <button className="btn" onClick={() => { setForm(null); setSaveError(null) }}>Cancel</button>
+      </div>
+      <p className="muted-small">Plans are saved in this browser on this computer.</p>
+    </div>
+  )
   const dragRef = useRef(null)
   const [dragGeom, setDragGeom] = useState(null) // outline preview while dragging
 
@@ -290,7 +380,15 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
   }, [editing, editor, edit, selected, drawPts, cursor, tool, plan, dragGeom])
 
   if (!std) return null
-  if (!open) return <button className="btn btn-primary sketch-btn" onClick={() => setOpen(true)}>Draft a neighborhood</button>
+  if (!open) {
+    return (
+      <>
+        {savedList}
+        {form?.as === 'rename' && saveForm}
+        <button className="btn btn-primary sketch-btn" onClick={() => { setCurrent(null); setOpen(true) }}>Draft a neighborhood</button>
+      </>
+    )
+  }
 
   const setMixRow = (i, k, v) => setMix((m) => m.map((row, j) => (j === i ? { ...row, [k]: v } : row)))
   const download = () => {
@@ -311,9 +409,15 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
   return (
     <div className="siteplan">
       <div className="siteplan-head">
-        <strong>Neighborhood draft</strong>
-        <button className="link-btn" onClick={() => { setEditing(false); setOpen(false); setPlan(null); onPlan(null) }}>Hide draft</button>
+        <strong>
+          {current ? current.name : 'Neighborhood draft'}
+          {current && <span className={`plan-status ${dirty ? 'dirty' : ''}`}>{dirty ? 'Unsaved changes' : 'Saved'}</span>}
+        </strong>
+        <button className="link-btn" onClick={() => { setEditing(false); setOpen(false); setPlan(null); onPlan(null); setForm(null) }}>Hide draft</button>
       </div>
+      {current?.description && <p className="plan-desc">{current.description}</p>}
+      {form && saveForm}
+      {!editing && !form && savedList}
 
       {/* editing toolbar sits on top while editing */}
       {editing && (
@@ -408,7 +512,10 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
           )}
 
           <div className="nb-actions">
-            {!editing && <button className="btn btn-primary" onClick={startEditing}>{edit ? 'Keep editing' : 'Edit layout'}</button>}
+            {!current && <button className="btn btn-primary" onClick={() => setForm({ as: 'new', name: '', description: '' })}>Save plan</button>}
+            {current && dirty && <button className="btn btn-primary" onClick={quickSave}>Save</button>}
+            {current && <button className="btn" onClick={() => setForm({ as: 'new', name: `${current.name} (copy)`, description: current.description || '' })}>Save as new</button>}
+            {!editing && <button className="btn" onClick={startEditing}>{edit ? 'Keep editing' : 'Edit layout'}</button>}
             {!edit && plan.variants > 1 && <button className="btn" onClick={() => setVariant((v) => (v + 1) % plan.variants)}>Try another layout ({variant + 1} of {plan.variants})</button>}
             {edit && <button className="btn" onClick={() => { setEditing(false); setEdit(null); setRemoved([]); setHistory([]); setSelected(null) }}>Back to automatic draft</button>}
             <button className="btn" onClick={download}>Export KML</button>

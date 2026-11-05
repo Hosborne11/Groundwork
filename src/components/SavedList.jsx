@@ -1,3 +1,5 @@
+import { usePlans, deletePlan } from '../lib/planStore'
+
 function toCSV(saved) {
   const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`
   const head = ['County', 'Parcel', 'Owner', 'Address', 'Acres', 'Value', 'Mailing address', 'Saved']
@@ -35,6 +37,29 @@ export default function SavedList({ saved, onPick, onRemove }) {
           </li>
         ))}
       </ul>
+    </div>
+  )
+}
+
+/** Every saved site plan, across parcels. */
+export function SavedPlans({ onOpen }) {
+  const plans = usePlans()
+  if (!plans.length) return null
+  return (
+    <div className="saved-plans">
+      <div className="saved-head"><span className="muted-inline">{plans.length} site plan{plans.length === 1 ? '' : 's'}</span></div>
+      <ul>
+        {plans.map((p) => (
+          <li key={p.id}>
+            <button className="saved-item" onClick={() => onOpen(p)}>
+              <span className="r-owner">{p.name}</span>
+              <span className="r-meta">{[p.parcel.address, p.summary && `${p.summary.lots} lots`, new Date(p.updated).toLocaleDateString()].filter(Boolean).join(' · ')}</span>
+            </button>
+            <button className="remove" onClick={() => { if (window.confirm(`Delete "${p.name}"? This can't be undone.`)) deletePlan(p.id) }} aria-label={`Delete ${p.name}`}>×</button>
+          </li>
+        ))}
+      </ul>
+      <div className="saved-divider">Parcels</div>
     </div>
   )
 }
