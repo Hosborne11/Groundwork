@@ -1,0 +1,80 @@
+# Monthly data refresh for Groundwork.
+# Runs the three data scripts on GitHub's servers, commits the updated files in public/data,
+# and pushes. Vercel deploys the push automatically.
+#
+# Run it any time: GitHub > Actions > "Refresh data" > Run workflow.
+
+name: Refresh data
+
+on:
+  schedule:
+    - cron: '0 10 1 * *' # 1st of every month, 10:00 UTC (5 or 6 AM in Charlotte)
+  workflow_dispatch: {} # the "Run workflow" button
+
+permissions:
+  contents: write # lets the job push the updated data files
+
+concurrency: refresh-data # never two refreshes at once
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Charlotte Water keeps a per-petition cache so it only reads new staff analyses.
+      # Restore last month's cache and save the updated one afterward.
+      - uses: actions/cache@v4
+        with:
+          path: .cache/charlotte-water
+          key: charlotte-water-${{ github.run_id }}
+          restore-keys: charlotte-water-
+
+      # Each county's data is independent: if one server is down, the others still refresh.
+      - name: Charlotte Water statements
+        id: water
+        continue-on-error: true
+        run: npm run data:charlotte-water
+
+      - name: Mecklenburg opportunity map
+        id: meck
+        continue-on-error: true
+        run: npm run data:opportunity
+
+      - name: Cabarrus and York opportunity map
+        id: region
+        continue-on-error: true
+        run: npm run data:opportunity-region
+
+      - name: Check the app still builds
+        run: npm run build
+
+      - name: Commit and push the updated data
+        run: |
+          git config user.name "Groundwork data refresh"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/data
+          if git diff --cached --quiet; then
+            echo "No data changed this month; nothing to commit."
+            exit 0
+          fi
+          git commit -m "Monthly data refresh ($(date -u +%Y-%m-%d))"
+          git push
+
+      # Mark the run as failed (GitHub emails you) if any data step had a problem,
+      # after committing whatever did succeed.
+      - name: Report any data step that failed
+        if: steps.water.outcome == 'failure' || steps.meck.outcome == 'failure' || steps.region.outcome == 'failure'
+        run: |
+          echo "Charlotte Water: ${{ steps.water.outcome }}"
+          echo "Mecklenburg: ${{ steps.meck.outcome }}"
+          echo "Cabarrus and York: ${{ steps.region.outcome }}"
+          exit 1

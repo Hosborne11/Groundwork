@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { FACTORS, DEFAULT_WEIGHTS, SCORE_COLORS, topDrivers, areaName, TREND_METRICS, countyTotals, countyInfo } from '../lib/opportunity'
 
+// 1st, 2nd, 3rd, 4th … 11th, 12th, 13th … 21st
+const ordinal = (n) => { const t = n % 100, o = n % 10; return `${n}${t >= 11 && t <= 13 ? 'th' : o === 1 ? 'st' : o === 2 ? 'nd' : o === 3 ? 'rd' : 'th'}` }
 const scoreColor = (s) => [...SCORE_COLORS].reverse().find(([t]) => s >= t)[1]
 
 /** All / Mecklenburg / Cabarrus / York chips; follows the county picker. */
@@ -76,7 +78,7 @@ export default function OpportunityPanel({ data, scored, weights, setWeights, se
             }
             return (
               <div key={f.key} className="opp-factor">
-                <div className="opp-f-top"><span>{f.label}</span><span>{p == null ? 'n/a' : `${Math.round(p * 100)}th pct`}</span></div>
+                <div className="opp-f-top"><span>{f.label}</span><span>{p == null ? 'n/a' : `${ordinal(Math.round(p * 100))} pct`}</span></div>
                 <div className="opp-bar"><i style={{ width: `${(p ?? 0) * 100}%` }} /></div>
                 <small>{f.explain(sel.h.m, sel.h.place)}</small>
                 {info?.notes?.[f.key] && <small className="opp-note">{info.notes[f.key]}</small>}
