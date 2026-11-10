@@ -3,6 +3,7 @@
  * Builds opportunity hexagons for Cabarrus County, NC and York County, SC:
  *   public/data/opportunity-cabarrus.json
  *   public/data/opportunity-york.json
+ *   public/data/opportunity-union.json
  *
  *   npm run data:opportunity-region            (both counties)
  *   npm run data:opportunity-region cabarrus   (one county)
@@ -69,9 +70,9 @@ async function makeGrid(geoid, prefix) {
   const grid = turf.hexGrid(turf.bbox(county), CELL_MILES, { units: 'miles' })
   const hexes = grid.features.filter((h) => turf.booleanIntersects(h, county)).map((h, i) => ({
     id: `${prefix}${i}`, geom: h.geometry, c: turf.centroid(h).geometry.coordinates, bbox: turf.bbox(h),
-    m: { rezApproved: 0, rezActive: 0, rezAcres: 0, sales: 0, saleAcres: 0, vacantAc: 0, bigVacantAc: 0, bigVacantN: 0, water: 0, sewer: 0, growthShare: 0 },
+    m: { rezApproved: 0, rezActive: 0, rezAcres: 0, sales: 0, saleAcres: 0, vacantAc: 0, bigVacantAc: 0, bigVacantN: 0, water: 0, sewer: 0, growthShare: 0, newHomes: 0 },
     ppa: { small: { recent: [], prior: [] }, tract: { recent: [], prior: [] } },
-    t: { filed: YEARS.map(() => 0), approved: YEARS.map(() => 0), sales: YEARS.map(() => 0) },
+    t: { filed: YEARS.map(() => 0), approved: YEARS.map(() => 0), sales: YEARS.map(() => 0), built: YEARS.map(() => 0) },
     rezList: [], roads: {},
   }))
   const B = 0.01, buckets = new Map(), key = (x, y) => `${Math.floor(x / B)},${Math.floor(y / B)}`
@@ -291,6 +292,71 @@ async function york() {
   console.log(`  ${byCase.size} rezoning cases, ${vacant.length} vacant parcels, ${deeds} land sales (by deed)`)
 }
 
+/* ---------------- Union County, NC ---------------- */
+async function union() {
+  console.log('UNION COUNTY')
+  const PARCELS = 'https://gis.unioncountync.gov/server/rest/services/OperationalLayers/MapServer/215'
+  const { county, hexes, hexAt } = await makeGrid('37179', 'u')
+  const geo = { returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0002, geometryPrecision: 5 }
+  const HOMES_FARMS = ['RES', 'FARM']
+  const use = (f) => (f.properties.property_use || '').trim().toUpperCase()
+
+  // Vacant land: Union records buildings only for homes and farms, so "no building on record"
+  // means vacant only for those. (The server rejects this as one query, so filter here.)
+  const noBuilding = await getAll(PARCELS, { where: "(YEARBLT IS NULL OR YEARBLT = 0) AND (STRUCTTYPE IS NULL OR STRUCTTYPE = '')", outFields: 'PID,mapped_acres,property_use', ...geo }, 'parcels with no building on record')
+  const vacant = noBuilding.filter((f) => HOMES_FARMS.includes(use(f)))
+  addVacant(vacant, hexAt, 'mapped_acres')
+
+  // Land sales: Union keeps three sales per parcel. A sale counts as a land sale when nothing was
+  // built yet (no year built, or built after the sale year); deeds without stamps or between
+  // family or affiliated parties aren't market sales.
+  const S = [1, 2, 3]
+  const saleFields = S.flatMap((n) => [`s${n}_SALESAMT`, `s${n}_SALEDATE`, `s${n}_DEED_BOOK`, `s${n}_DEED_PAGE`, `s${n}_DEEDQUAL_CODEDESC`])
+  const sold = await getAll(PARCELS, {
+    where: `property_use IN ('RES','FARM') AND (s1_SALE_YEAR >= ${FIRST_YEAR} OR s2_SALE_YEAR >= ${FIRST_YEAR} OR s3_SALE_YEAR >= ${FIRST_YEAR})`,
+    outFields: ['PID', 'mapped_acres', 'YEARBLT', ...saleFields].join(','), ...geo,
+  }, 'parcels sold since 2020')
+  const nonMarket = /NO STAMPS|FAMILY|AFFILIAT|NOT OPEN MARKET|GIFT|ESTATE/i
+  const landSales = []
+  for (const f of sold) {
+    if (!f.geometry) continue
+    const p = f.properties, pt = centerOf(f), acres = Number(p.mapped_acres) || acresOf(f)
+    for (const n of S) {
+      const date = p[`s${n}_SALEDATE`], price = Number(p[`s${n}_SALESAMT`])
+      if (!date || !(price >= 1000) || nonMarket.test(p[`s${n}_DEEDQUAL_CODEDESC`] || '')) continue
+      const y = new Date(date).getFullYear()
+      if (y < FIRST_YEAR || (Number(p.YEARBLT) > 0 && Number(p.YEARBLT) <= y)) continue // already built when sold
+      landSales.push({ id: p.PID, price, date, book: p[`s${n}_DEED_BOOK`], page: p[`s${n}_DEED_PAGE`], acres, pt })
+    }
+  }
+  const deeds = addSales(landSales, hexAt)
+
+  // New homes by year built (the county records a year's new homes after that year ends)
+  const homes = await getAll(PARCELS, { where: `YEARBLT >= ${FIRST_YEAR}`, outFields: 'PID,YEARBLT', ...geo }, 'homes built since 2020')
+  for (const f of homes) {
+    const h = hexAt(centerOf(f))
+    if (!h) continue
+    const y = Number(f.properties.YEARBLT)
+    const iy = y - FIRST_YEAR; if (iy >= 0 && iy < YEARS.length) h.t.built[iy]++
+    if (y >= NOW.getFullYear() - 2) h.m.newHomes++
+  }
+
+  await addRoadNames(county, hexes, hexAt)
+  finishTrends(hexes)
+  await write('public/data/opportunity-union.json', {
+    county: 'Union',
+    factors: ['sales', 'trend', 'land', 'building'],
+    measures: ['sales', 'built'],
+    notes: {
+      sales: 'Includes lots sold before a house was built on them, from Union’s three most recent sales per parcel.',
+      building: 'Homes by year built; the county records each year’s new homes after the year ends.',
+      land: 'Homes and farmland with no building on record (Union doesn’t record commercial buildings).',
+    },
+  }, hexes)
+  console.log(`  ${vacant.length} vacant home and farm parcels, ${deeds} land sales (by deed), ${homes.length} homes built since ${FIRST_YEAR}`)
+}
+
 const which = (process.argv[2] || 'all').toLowerCase()
 if (which === 'all' || which === 'cabarrus') await cabarrus()
 if (which === 'all' || which === 'york') await york()
+if (which === 'all' || which === 'union') await union()

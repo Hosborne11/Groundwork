@@ -70,7 +70,7 @@ export default function OpportunityPanel({ data, scored, weights, setWeights, se
               return (
                 <div key={f.key} className="opp-factor off">
                   <div className="opp-f-top"><span>{f.label}</span><span>not used</span></div>
-                  <small>{sel.h.county} doesn't publish this, so the score uses the other signals.</small>
+                  <small>Not available for {sel.h.county} yet, so the score uses the other signals.</small>
                 </div>
               )
             }

@@ -1,7 +1,7 @@
 // Opportunity scoring for the hexagon grid built by `npm run data:opportunity`.
 // Each factor becomes a percentile across the county; the score is a weighted blend (0–100).
 
-const DATA_URLS = ['/data/opportunity-meck.json', '/data/opportunity-cabarrus.json', '/data/opportunity-york.json']
+const DATA_URLS = ['/data/opportunity-meck.json', '/data/opportunity-cabarrus.json', '/data/opportunity-york.json', '/data/opportunity-union.json']
 const ALL_FACTORS = ['rezoning', 'sales', 'trend', 'land', 'utilities', 'plan']
 const ALL_MEASURES = ['filed', 'approved', 'sales']
 
@@ -36,6 +36,11 @@ export const FACTORS = [
     key: 'land', label: 'Developable land', weight: 25,
     value: (m) => m.bigVacantAc,
     explain: (m) => (m.bigVacantN ? `${Math.round(m.bigVacantAc)} ac across ${plural(m.bigVacantN, 'vacant parcel')} of 2+ acres` : 'No vacant parcels of 2+ acres'),
+  },
+  {
+    key: 'building', label: 'New homes built', weight: 15,
+    value: (m) => m.newHomes || 0,
+    explain: (m) => (m.newHomes ? `${m.newHomes} new home${m.newHomes === 1 ? '' : 's'} built in the last two years` : 'No new homes recorded in the last two years'),
   },
   {
     key: 'utilities', label: 'Utilities nearby', weight: 10,
@@ -160,6 +165,7 @@ export const TREND_METRICS = [
   { key: 'filed', label: 'Rezonings filed', unit: 'petition' },
   { key: 'approved', label: 'Rezonings approved', unit: 'approval' },
   { key: 'sales', label: 'Land sales', unit: 'vacant-land sale' },
+  { key: 'built', label: 'New homes', unit: 'home' },
 ]
 
 /**
