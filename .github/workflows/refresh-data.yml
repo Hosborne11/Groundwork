@@ -67,6 +67,8 @@ jobs:
             exit 0
           fi
           git commit -m "Monthly data refresh ($(date -u +%Y-%m-%d))"
+          # if you pushed changes while this ran, put the data commit on top of them
+          git pull --rebase origin main
           git push
 
       # Mark the run as failed (GitHub emails you) if any data step had a problem,
