@@ -4,6 +4,7 @@ import { FACTORS, DEFAULT_WEIGHTS, SCORE_COLORS, topDrivers, areaName, TREND_MET
 // 1st, 2nd, 3rd, 4th … 11th, 12th, 13th … 21st
 const ordinal = (n) => { const t = n % 100, o = n % 10; return `${n}${t >= 11 && t <= 13 ? 'th' : o === 1 ? 'st' : o === 2 ? 'nd' : o === 3 ? 'rd' : 'th'}` }
 const scoreColor = (s) => [...SCORE_COLORS].reverse().find(([t]) => s >= t)[1]
+const scoreText = (s) => (s >= 65 ? '#FFFFFF' : '#1C2A33')
 
 /** All / Mecklenburg / Cabarrus / York chips; follows the county picker. */
 function CountyChips({ data, value, onChange }) {
@@ -51,14 +52,14 @@ export default function OpportunityPanel({ data, scored, weights, setWeights, se
       </p>
 
       <div className="opp-legend" aria-hidden="true">
-        <span style={{ background: `linear-gradient(90deg, ${SCORE_COLORS.map(([t, c]) => `${c} ${t}%`).join(', ')})` }} />
-        <div><small>Lower</small><small>Higher opportunity</small></div>
+        <span style={{ background: `linear-gradient(90deg, transparent 0%, transparent 25%, ${SCORE_COLORS.slice(1).map(([t, c]) => `${c} ${t}%`).join(', ')})` }} />
+        <div><small>Little or none (unshaded)</small><small>Strong opportunity</small></div>
       </div>
 
       {sel && (
         <section className="opp-sel">
           <div className="opp-sel-head">
-            <span className="opp-score" style={{ background: scoreColor(sel.score) }}>{sel.score}</span>
+            <span className="opp-score" style={{ background: scoreColor(sel.score), color: scoreText(sel.score) }}>{sel.score}</span>
             <div>
               {sel.h.name && <strong className="opp-name">{areaName(sel.h.name)}</strong>}
               <span>Rank {sel.rank} of {sel.of} in {sel.h.county} · top {Math.max(1, Math.round((sel.rank / sel.of) * 100))}%</span>
@@ -114,7 +115,7 @@ export default function OpportunityPanel({ data, scored, weights, setWeights, se
             {(county === 'All' ? scored.ranked : scored.rankedBy[county] || []).slice(0, 10).map((x) => (
               <li key={x.h.id}>
                 <button className={selected === x.h.id ? 'on' : ''} onClick={() => onSelect(x.h.id, true)}>
-                  <span className="opp-score sm" style={{ background: scoreColor(x.score) }}>{x.score}</span>
+                  <span className="opp-score sm" style={{ background: scoreColor(x.score), color: scoreText(x.score) }}>{x.score}</span>
                   <span className="opp-why">
                     <strong>{areaName(x.h.name) || 'Unnamed area'}{county === 'All' && <em className="opp-county"> · {x.h.county}</em>}</strong>
                     <small>{topDrivers(x, weights).join(' · ') || 'mixed signals'}</small>

@@ -474,6 +474,7 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
             </p>
           )}
           {plan.outside && <p className="note warn">Part of a pond or park is outside the parcel, so only the part inside is counted.</p>}
+          {plan.noFrontage > 0 && <p className="note warn">{plan.noFrontage} lot{plan.noFrontage > 1 ? 's were' : ' was'} left out because {plan.noFrontage > 1 ? 'they' : 'it'} had no street frontage for a driveway.</p>}
 
           <div className="mix-bar" aria-hidden="true">
             {plan.counts.filter((c) => c.lots).map((c) => <span key={c.i} style={{ background: c.color, flex: c.lots }} />)}
@@ -499,6 +500,7 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
 
           <div className="nb-legend" aria-label="Map key">
             <span><i className="sw road" />Street</span>
+            <span><i className="sw drive" />Driveway</span>
             <span><i className="sw pond" />Pond</span>
             {plan.parkAc > 0 && <span><i className="sw park" />Park</span>}
             <span><i className="sw green" />Green space</span>

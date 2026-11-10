@@ -158,7 +158,8 @@ export function areaName(raw) {
   return [shown.join(' & '), ...town].join(', ')
 }
 
-export const SCORE_COLORS = [[0, '#2C7BB6'], [25, '#ABD9E9'], [50, '#FFFFBF'], [70, '#FDAE61'], [85, '#D7191C']]
+// Green = opportunity. Low scores aren't shaded on the map at all (see the fill opacity in App).
+export const SCORE_COLORS = [[0, '#E5F5E0'], [45, '#A1D99B'], [65, '#41AB5D'], [80, '#238B45'], [100, '#00441B']]
 
 /* ---------------- trends over time ---------------- */
 export const TREND_METRICS = [
@@ -179,7 +180,8 @@ export function trendCollection(data, metric, yearIx, scale = 'all') {
     features: data.hexes.map((h) => {
       const v = h.t?.[metric]?.[yearIx] || 0
       // square root keeps small counts visible next to a few very busy areas
-      return { type: 'Feature', properties: { id: h.id, v, score: v ? Math.round(100 * Math.sqrt(v / max)) : 0 }, geometry: { type: 'Polygon', coordinates: [h.g] } }
+      // any activity at all is shaded (starting light green); none stays unshaded
+      return { type: 'Feature', properties: { id: h.id, v, score: v ? Math.round(45 + 55 * Math.sqrt(v / max)) : 0 }, geometry: { type: 'Polygon', coordinates: [h.g] } }
     }),
   }
 }

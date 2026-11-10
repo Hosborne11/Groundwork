@@ -140,9 +140,10 @@ export default function App() {
           // opportunity hexagons: hotter = higher score; low scores fade so hot spots stand out
           { id: 'opp-fill', type: 'fill', source: 'opportunity', layout: { visibility: 'none' }, paint: {
             'fill-color': ['interpolate', ['linear'], ['get', 'score'], ...SCORE_COLORS.flat()],
-            'fill-opacity': ['interpolate', ['linear'], ['get', 'score'], 0, 0.08, 50, 0.3, 100, 0.65],
+            // no shading where there's little opportunity; deeper green as it grows
+            'fill-opacity': ['interpolate', ['linear'], ['get', 'score'], 0, 0, 25, 0, 45, 0.18, 70, 0.45, 100, 0.72],
           } },
-          { id: 'opp-line', type: 'line', source: 'opportunity', layout: { visibility: 'none' }, paint: { 'line-color': '#FFFFFF', 'line-opacity': 0.25, 'line-width': 0.5 } },
+          { id: 'opp-line', type: 'line', source: 'opportunity', layout: { visibility: 'none' }, paint: { 'line-color': '#FFFFFF', 'line-opacity': ['interpolate', ['linear'], ['get', 'score'], 25, 0, 45, 0.25], 'line-width': 0.5 } },
           { id: 'opp-sel', type: 'line', source: 'opportunity', filter: ['==', ['get', 'id'], -1], paint: { 'line-color': '#D6157A', 'line-width': 3 } },
           { id: 'parcels', type: 'line', source: 'parcels', minzoom: PARCEL_MIN_ZOOM, paint: { 'line-color': '#FFFFFF', 'line-opacity': 0.8, 'line-width': ['interpolate', ['linear'], ['zoom'], 15, 0.6, 18, 1.6] } },
           { id: 'water', type: 'line', source: 'water', minzoom: LINE_MIN_ZOOM, paint: { 'line-color': '#2F7DE1', 'line-width': ['interpolate', ['linear'], ['zoom'], 15, 1.5, 18, 4] } },
@@ -166,6 +167,9 @@ export default function App() {
           } },
           { id: 'siteplan-line', type: 'line', source: 'siteplan', filter: ['==', ['get', 'kind'], 'lot'], paint: {
             'line-color': '#FFFFFF', 'line-width': ['interpolate', ['linear'], ['zoom'], 14, 0.5, 16, 1, 18, 2],
+          } },
+          { id: 'siteplan-driveway', type: 'line', source: 'siteplan', minzoom: 15.5, filter: ['==', ['get', 'kind'], 'driveway'], layout: { 'line-cap': 'butt' }, paint: {
+            'line-color': '#CFC8B8', 'line-width': ['interpolate', ['exponential', 2], ['zoom'], 16, 2, 19, 14], 'line-opacity': 0.95,
           } },
           { id: 'siteplan-centerline', type: 'line', source: 'siteplan', minzoom: 15.5, filter: ['==', ['get', 'kind'], 'centerline'], paint: {
             'line-color': '#F4D35E', 'line-width': ['interpolate', ['linear'], ['zoom'], 16, 0.8, 18, 1.6], 'line-dasharray': [4, 3], 'line-opacity': 0.85,

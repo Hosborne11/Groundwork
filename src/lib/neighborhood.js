@@ -388,7 +388,7 @@ export function neighborhoodDraft(parcel, opts) {
         const o = clip(piece, l.f)
         if (o && areaFt(o.geometry) > 0.03 * a) return
       }
-      lots.push({ f: piece, bb, type: type.i, sf: a, ext })
+      lots.push({ f: piece, bb, type: type.i, sf: a, ext, front: [ring[0], ring[1]], back: [ring[3], ring[2]] })
       return true
     }
 
@@ -624,7 +624,7 @@ export function neighborhoodDraft(parcel, opts) {
         const o = clip(piece, l.f)
         if (o && areaFt(o.geometry) > 0.03 * a) return
       }
-      lots.push({ f: piece, bb, type: type.i, sf: a, ext })
+      lots.push({ f: piece, bb, type: type.i, sf: a, ext, front: [ring[0], ring[1]], back: [ring[3], ring[2]] })
       return true
     }
 
@@ -696,6 +696,28 @@ export function neighborhoodDraft(parcel, opts) {
       }
     }
 
+    // Every lot must reach a street: measure each lot's frontage as its overlap with a thin band
+    // along the street edges, and drop lots with less than 20 ft (possible after hand edits).
+    const band = [
+      ...r.streets.map((st) => rowPolygon(st.pts, ROW_FT + 8)),
+      ...r.bulbs.map((b) => circle(b.c, BULB_R + 9, 24)),
+    ].filter(Boolean)
+    const bandBoxes = band.map(bboxOf)
+    const frontageOf = (l) => {
+      let ft = 0
+      const bb = bboxOf(l.f)
+      for (let k = 0; k < band.length; k++) {
+        if (!boxesTouch(bb, bandBoxes[k])) continue
+        const o = clip(l.f, band[k])
+        if (o) ft += areaFt(o.geometry) / 4 // the band reaches 4 ft into the lot, so area / 4 = frontage
+      }
+      return ft
+    }
+    let noFrontage = 0
+    for (let i = lots.length - 1; i >= 0; i--) {
+      if (frontageOf(lots[i]) < 20) { lots.splice(i, 1); noFrontage++ }
+    }
+
     let greenSf = 0
     const left = minus(r.B, ...(roads ? [roads] : []), ...lots.map((l) => l.f))
     if (left) {
@@ -716,6 +738,17 @@ export function neighborhoodDraft(parcel, opts) {
     }
     if (roads) features.push(turf.feature(back(roads.geometry), { kind: 'road' }))
     lots.forEach((l, i) => features.push(turf.feature(back(l.f.geometry), { kind: 'lot', n: i + 1, type: l.type, sf: Math.round(l.sf), color: LOT_COLORS[l.type] })))
+    // driveway: from the street edge, a bit off-center like a side garage, into the lot
+    for (const l of lots) {
+      if (!l.front) continue
+      const [f0, f1] = l.front, [b0, b1] = l.back
+      const at = add(f0, mul(sub(f1, f0), 0.3))
+      const inward = norm(sub(add(b0, mul(sub(b1, b0), 0.3)), at))
+      const depth = len(sub(add(b0, mul(sub(b1, b0), 0.3)), at))
+      // shorten it for odd-shaped lots so it stays inside the lot
+      const end = [45, 30, 20].map((d) => add(at, mul(inward, Math.min(d, depth * 0.35)))).find((p) => turf.booleanPointInPolygon(p, l.f))
+      if (end) features.push(turf.feature(back({ type: 'LineString', coordinates: [at, end] }), { kind: 'driveway' }))
+    }
     // street centerlines (drawn as a dashed center stripe when zoomed in)
     for (const st of r.streets) if (st.pts.length >= 2) features.push(turf.feature({ type: 'LineString', coordinates: st.pts.map((p) => toLL(rot(p, r.ang))) }, { kind: 'centerline' }))
     // every shape carries its own fill color so the map style stays simple
@@ -772,6 +805,7 @@ export function neighborhoodDraft(parcel, opts) {
       roadAc: roadSf / 43560,
       conflicts,
       outside: !!r.outside,
+      noFrontage,
       pondAc: pondSf / 43560,
       parkAc: parkSf / 43560,
       greenAc: greenSf / 43560,
