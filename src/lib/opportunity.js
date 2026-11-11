@@ -78,12 +78,21 @@ export const EARLY_FACTORS = [
   {
     key: 'spillover', label: 'Busy neighbors, quiet here', weight: 35,
     value: (m, h) => h.early?.spill ?? null,
-    explain: (m, place, h) => h.early ? `Surrounding areas rank in the ${ordinalPct(h.early.ringPct)} percentile for activity; this one is in the ${ordinalPct(h.early.ownPct)}` : 'Not enough data',
+    explain: (m, place, h) => {
+      if (!h.early) return 'Not enough data'
+      const here = h.early.ownPct < 0.05 ? 'this area has had almost no activity' : `this one is in the ${ordinalPct(h.early.ownPct)}`
+      return `Surrounding areas rank in the ${ordinalPct(h.early.ringPct)} percentile for activity; ${here}`
+    },
   },
   {
     key: 'accel', label: 'Picking up speed', weight: 25,
     value: (m, h) => h.early?.accel ?? null,
-    explain: (m, place, h) => h.early ? `${h.early.prior} sales, approvals, and new homes in ${h.early.priorYears}; ${h.early.recent} in ${h.early.recentYears}` : 'Not enough data',
+    explain: (m, place, h) => {
+      if (!h.early) return 'Not enough data'
+      const { prior, recent, priorYears, recentYears } = h.early
+      if (recent < MIN_RECENT) return `Only ${recent} sale${recent === 1 ? '' : 's'}, approval${recent === 1 ? '' : 's'}, or new home${recent === 1 ? '' : 's'} in ${recentYears}, too few to call a trend`
+      return `${prior} sales, approvals, and new homes in ${priorYears}; ${recent} in ${recentYears}`
+    },
   },
   { ...FACTORS.find((f) => f.key === 'land'), weight: 25 },
   { ...COMMUTE, weight: 10 },
@@ -121,6 +130,8 @@ export function loadOpportunity() {
   return loading
 }
 export const countyInfo = (data, name) => data?.counties?.find((c) => c.name === name)
+
+const MIN_RECENT = 3 // recent events needed before "picking up speed" counts
 
 /** Adds drive times, nearest schools, neighbors, and the early-signal measures to each hexagon. */
 function enrich(hexes, years, schools, times) {
@@ -171,7 +182,8 @@ function enrich(hexes, years, schools, times) {
     h.early = {
       ownPct: h.actPct, ringPct,
       spill: Math.max(0, ringPct - h.actPct), // neighbors busier than this area
-      recent, prior, accel: (recent - prior) / (prior + 2), // growth from a low base counts
+      // growth from a low base counts, but one or two transactions aren't a trend
+      recent, prior, accel: recent >= MIN_RECENT ? (recent - prior) / (prior + 2) : 0,
       recentYears: yrs(n - 3, n - 2), priorYears: yrs(n - 5, n - 4),
     }
   }
