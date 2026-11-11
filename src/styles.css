@@ -559,3 +559,4 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .udo-checks .bad .mark { background: var(--flag); }
 .udo-checks .unchecked .mark { background: var(--ink-3); }
 .measure { margin: -2px 0 8px; padding: 5px 8px; border-radius: 4px; background: #1C2A33; color: #F4D35E; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.editor-box .seg { flex-wrap: wrap; }

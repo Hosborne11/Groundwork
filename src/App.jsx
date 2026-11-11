@@ -210,7 +210,7 @@ export default function App() {
           } },
           { id: 'siteplan-lot-labels', type: 'symbol', source: 'siteplanLabels', minzoom: 16, filter: ['==', ['get', 'kind'], 'lot-label'],
             // lot number; its frontage × depth too when zoomed in close
-            layout: { 'text-field': ['step', ['zoom'], ['get', 'label'], 17.6, ['format', ['get', 'label'], {}, '\n', {}, ['get', 'dims'], { 'font-scale': 0.78 }]],
+            layout: { 'text-field': ['step', ['zoom'], ['get', 'label'], 17, ['format', ['get', 'label'], {}, '\n', {}, ['get', 'dims'], { 'font-scale': 0.78 }]],
               'text-font': ['Open Sans Semibold'], 'text-size': ['interpolate', ['linear'], ['zoom'], 16, 9, 18, 13], 'text-allow-overlap': false },
             paint: { 'text-color': '#1C2A33', 'text-halo-color': 'rgba(255,255,255,0.7)', 'text-halo-width': 1.2 } },
           // street lengths along each street
@@ -227,6 +227,13 @@ export default function App() {
           { id: 'edit-lot-sel', type: 'line', source: 'editDraw', filter: ['==', ['get', 'kind'], 'lot-sel'], paint: { 'line-color': '#D6157A', 'line-width': 3 } },
           { id: 'edit-draw-line', type: 'line', source: 'editDraw', filter: ['==', ['get', 'kind'], 'draw'], paint: { 'line-color': '#D6157A', 'line-width': 3, 'line-dasharray': [2, 1] } },
           { id: 'edit-draw-pts', type: 'circle', source: 'editDraw', filter: ['==', ['get', 'kind'], 'vertex'], paint: { 'circle-radius': 4.5, 'circle-color': '#FFFFFF', 'circle-stroke-color': '#D6157A', 'circle-stroke-width': 2 } },
+          // direct editing: the site boundary, draggable lot lines, and handles
+          { id: 'edit-boundary', type: 'line', source: 'editDraw', filter: ['==', ['get', 'kind'], 'boundary'], paint: { 'line-color': '#D6157A', 'line-width': 2.5, 'line-dasharray': [3, 1.5] } },
+          { id: 'edit-lotlines', type: 'line', source: 'editDraw', filter: ['==', ['get', 'kind'], 'lotline'], paint: { 'line-color': '#FFFFFF', 'line-width': 1.2, 'line-opacity': 0.55 } },
+          { id: 'edit-lotline-active', type: 'line', source: 'editDraw', filter: ['==', ['get', 'kind'], 'lotline-active'], paint: { 'line-color': '#D6157A', 'line-width': 3.5 } },
+          { id: 'edit-handles', type: 'circle', source: 'editDraw', filter: ['==', ['get', 'kind'], 'handle'], paint: {
+            'circle-radius': ['case', ['get', 'soft'], 6, 5.5], 'circle-color': '#FFFFFF', 'circle-stroke-color': '#1C2A33', 'circle-stroke-width': 2,
+          } },
           { id: 'selected-fill', type: 'fill', source: 'selected', paint: { 'fill-color': '#D6157A', 'fill-opacity': 0.14 } },
           { id: 'selected-line', type: 'line', source: 'selected', paint: { 'line-color': '#D6157A', 'line-width': 3 } },
         ],
@@ -269,6 +276,7 @@ export default function App() {
       selectParcel([e.lngLat.lng, e.lngLat.lat])
     })
     m.boxZoom.disable() // Shift-click adds parcels to a site assembly instead of drawing a zoom box
+    if (new URLSearchParams(location.search).get('debug') === 'map') window.__gwMap = m // opt-in hook for testing
     map.current = m
     return () => m.remove()
   }, [selectParcel])
@@ -375,6 +383,8 @@ export default function App() {
       return { [hit.properties.kind]: hit.properties.id }
     },
     setCursor: (c) => { if (map.current) map.current.getCanvas().style.cursor = c },
+    // screen position of a map point, for grabbing handles and lot lines
+    project: (ll) => map.current?.project(ll),
   }), [])
 
   useEffect(() => {

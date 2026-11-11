@@ -4,6 +4,7 @@ import { neighborhoodKml, LOT_COLORS } from '../lib/neighborhood'
 import { nearbyStreets } from '../lib/charlotte'
 import { N1, CONSERVATION_DISTRICTS, CONSERVATION_MIN_ACRES, MIXED_INCOME_MIN_ACRES, HOUSING, LOT_HOUSING, unitsFor, housingAllowed, FRONT_SETBACK_ASSUMED, MIN_HOUSE_DEPTH } from '../data/charlotteUdo'
 import { usePlans, savePlan, getPlan, renamePlan, duplicatePlan, deletePlan } from '../lib/planStore'
+import { handlesFor, softDrag, pxToSegment, feetAlong, ringOf, polygonOf } from '../lib/editHandles'
 
 const fmt = (n, d = 0) => Number(n).toLocaleString('en-US', { maximumFractionDigits: d, minimumFractionDigits: d })
 
@@ -71,7 +72,7 @@ export default function NeighborhoodCard({ parcel, parts, code, acres, floodPoly
   const [selected, setSelected] = useState(null) // { street: id } | { lot: n }
   const [drawPts, setDrawPts] = useState([])
   const live = useRef({}) // latest values for map handlers
-  live.current = { edit, removed, tool, drawPts, selected, plan }
+  live.current = { edit, removed, tool, drawPts, selected, plan, parcel }
   const nextId = useRef(1)
   const [housing, setHousing] = useState('sf') // what the lots hold: single-family, duplex, triplex, a mix, or (not by right) townhomes/apartments
 
@@ -165,6 +166,9 @@ export default function NeighborhoodCard({ parcel, parts, code, acres, floodPoly
   )
   const dragRef = useRef(null)
   const [dragGeom, setDragGeom] = useState(null) // outline preview while dragging
+  const [dragShape, setDragShape] = useState(null) // { kind, pts, ring } while a handle is dragged
+  const dragEndedAt = useRef(-1e9) // when the last drag ended, so its mouse-up isn't taken as a click
+  const [lotDrag, setLotDrag] = useState(null) // { coords, a, b, wa, wb, minW } while a lot line is dragged
 
   const modes = [
     { id: 'standard', label: 'Standard' },
@@ -173,6 +177,7 @@ export default function NeighborhoodCard({ parcel, parts, code, acres, floodPoly
   ].filter(Boolean)
   const active = mode === 'bonus' ? N1[std.bonusTo] : std
   const minWidth = mode === 'conservation' ? 40 : active.minWidthFt
+  live.current.minWidth = minWidth // the map handlers need it for lot-line limits
 
   // existing streets around the parcel, for the entrance
   useEffect(() => {
@@ -215,13 +220,14 @@ export default function NeighborhoodCard({ parcel, parts, code, acres, floodPoly
       const id = ++lastId.current
       const cleanMix = mix.filter((m) => m.share > 0).map((m) => ({ width: Math.max(minWidth, Number(m.width) || minWidth), share: Number(m.share) }))
       const total = cleanMix.reduce((a, m) => a + m.share, 0) || 1
-      const network = edit ? { streets: edit.streets.map(({ kind, pts, sideTypes }) => ({ kind, pts, sideTypes })), ponds: edit.ponds, parks: edit.parks, depth: edit.depth } : null
+      const network = edit ? { streets: edit.streets.map(({ id, kind, pts, sideTypes, sideCuts, lotFrom }) => ({ id, kind, pts, sideTypes, sideCuts, lotFrom })), ponds: edit.ponds, parks: edit.parks, depth: edit.depth } : null
+      const site = edit?.boundary ? turf.feature(edit.boundary, parcel.properties) : parcel // a dragged boundary replaces the parcel shape
       setStalled(false)
       clearTimeout(watchdog.current)
       // if the draft never comes back, stop waiting and offer a retry
       watchdog.current = setTimeout(() => { if (id === lastId.current) { setBusy(false); setStalled(true) } }, 45000)
       worker.current.postMessage({
-        id, parcel,
+        id, parcel: site,
         opts: { code, mode, mix: cleanMix.map((m) => ({ ...m, share: (m.share / total) * 100 })), reservePct: reserve, floodPolys, streets, variant, network, removed },
       })
     }, edit ? 150 : 300)
@@ -236,7 +242,7 @@ export default function NeighborhoodCard({ parcel, parts, code, acres, floodPoly
     setSelected(null)
   }, [])
   // when lot sizes are added or removed, the remembered per-street sizes no longer line up
-  const clearSizes = () => setEdit((cur) => (cur ? { ...cur, streets: cur.streets.map(({ sideTypes, ...st }) => st) } : cur))
+  const clearSizes = () => setEdit((cur) => (cur ? { ...cur, streets: cur.streets.map(({ sideTypes, sideCuts, ...st }) => st) } : cur))
   // In the editor the slider resizes the selected pond (or the first one) around its center.
   const resizePond = (pct) => {
     setReserve(pct)
@@ -307,12 +313,34 @@ export default function NeighborhoodCard({ parcel, parts, code, acres, floodPoly
     commit({ ...e, streets: [...e.streets, { id: nextId.current++, kind: 'user', pts: smooth(pts) }] })
   }, [commit])
 
+  // what has handles right now: the site boundary (Boundary tool), or the selected street, pond, or park
+  const handleTarget = () => {
+    const { selected: sel, edit: e, tool: t, parcel: pc } = live.current
+    if (!e) return null
+    if (t === 'boundary') {
+      const pts = ringOf(e.boundary || pc.geometry)
+      return { kind: 'boundary', pts, ring: true, ...handlesFor(pts, { ring: true, corners: true }) }
+    }
+    if (t !== 'select' || !sel) return null
+    if (sel.street != null) {
+      const st = e.streets.find((x) => x.id === sel.street)
+      return st ? { kind: 'street', id: st.id, pts: st.pts, ring: false, ...handlesFor(st.pts, { max: 8 }) } : null
+    }
+    const key = sel.pond != null ? 'ponds' : sel.park != null ? 'parks' : null
+    const item = key && e[key]?.find((x) => x.id === (sel.pond ?? sel.park))
+    if (!item) return null
+    const pts = ringOf(item.geom)
+    return { kind: key, id: item.id, pts, ring: true, ...handlesFor(pts, { ring: true, max: key === 'parks' ? 24 : 10 }) }
+  }
+
   // map handlers while editing
   useEffect(() => {
     if (!editing || !editor) return
     editor.register({
       click: (ev) => {
-        if (dragRef.current?.moved) { dragRef.current = null; return } // the end of a drag, not a click
+        // the end of a drag isn't a click; the map usually skips the click after a drag, so this only
+        // ignores clicks within a moment of a drag ending (a stale flag would swallow the next real click)
+        if (performance.now() - dragEndedAt.current < 250) return
         dragRef.current = null
         const ll = [ev.lngLat.lng, ev.lngLat.lat]
         const t = live.current.tool
@@ -324,12 +352,67 @@ export default function NeighborhoodCard({ parcel, parts, code, acres, floodPoly
       move: (ev) => {
         const ll = [ev.lngLat.lng, ev.lngLat.lat]
         const dr = dragRef.current
+        if (dr?.type === 'handle') {
+          dr.moved = true
+          dr.pts = softDrag(dr.ht.pts, dr.k, [ll[0] - dr.start[0], ll[1] - dr.start[1]], dr.ht.radius, dr.ht.ring)
+          setDragShape({ kind: dr.ht.kind, pts: dr.pts, ring: dr.ht.ring })
+          return
+        }
+        if (dr?.type === 'lotline') {
+          dr.moved = true
+          const t = dr.lo >= dr.hi ? dr.L.t : Math.min(dr.hi, Math.max(dr.lo, feetAlong(dr.line, ll) * dr.scale))
+          dr.t = t
+          // slide the line along the street to the new spot
+          const at = (x) => turf.along(turf.lineString(dr.line), x / dr.scale, { units: 'feet' }).geometry.coordinates
+          const p0 = at(dr.L.t), p1 = at(t), shift = [p1[0] - p0[0], p1[1] - p0[1]]
+          const [A0] = dr.cuts[dr.ia], [, B1] = dr.cuts[dr.ia + 1]
+          setLotDrag({ coords: dr.f.geometry.coordinates.map((c) => [c[0] + shift[0], c[1] + shift[1]]), a: dr.L.a, b: dr.L.b, wa: Math.round(t - A0), wb: Math.round(B1 - t), minW: dr.minW })
+          return
+        }
         if (dr) { dr.moved = true; setDragGeom(shiftGeom(dr.geom, ll[0] - dr.start[0], ll[1] - dr.start[1])); return }
         if (live.current.tool !== 'select' && live.current.drawPts.length) setCursor(ll)
       },
-      // press on the selected pond or park to drag it
+      // press a handle to reshape, a lot line to resize two lots, or the selected pond or park to move it
       mousedown: (ev) => {
         const sel = live.current.selected, e = live.current.edit
+        const ll0 = [ev.lngLat.lng, ev.lngLat.lat]
+        const ht = handleTarget()
+        if (ht) {
+          let best = null
+          for (const k of ht.idx) {
+            const q = editor.project(ht.pts[k]); if (!q) continue
+            const d = Math.hypot(q.x - ev.point.x, q.y - ev.point.y)
+            if (d < 11 && (!best || d < best.d)) best = { k, d }
+          }
+          if (best) { dragRef.current = { type: 'handle', ht, k: best.k, start: ll0, moved: false }; return true }
+        }
+        const pl = live.current.plan
+        if (live.current.tool === 'select' && e && pl?.geojson && !sel?.pond && !sel?.park) {
+          for (const f of pl.geojson.features) {
+            if (f.properties.kind !== 'lot-line') continue
+            const [c0, c1] = f.geometry.coordinates
+            if (pxToSegment(ev.point, editor.project(c0), editor.project(c1)) > 6) continue
+            const L = f.properties
+            const st = e.streets.find((x) => x.id === L.sid)
+            const side = pl.geojson.features.filter((x) => x.properties.kind === 'lot' && x.properties.sid === L.sid && x.properties.sgn === L.sgn).sort((x, y) => x.properties.t0 - y.properties.t0)
+            const ia = side.findIndex((x) => Math.abs(x.properties.t1 - L.t) < 1)
+            if (!st || ia < 0 || !side[ia + 1]) continue
+            // The narrowest each lot can get: the district's minimum width, and enough frontage to keep the
+            // minimum area. Real lots are clipped by curves and the boundary, so use each lot's own area per foot.
+            const A = side[ia].properties, Bp = side[ia + 1].properties
+            const minFor = (q) => Math.max(live.current.minWidth, Math.ceil((pl.minLotSf * 1.02) / (q.sf / Math.max(1, q.t1 - q.t0))))
+            const minA = minFor(A), minB = minFor(Bp)
+            // positions along the street are in the engine's units; scale map distances to match exactly
+            const engineLen = pl.network?.streets?.find((x) => x.id === L.sid)?.len
+            const mapLen = turf.length(turf.lineString(st.pts), { units: 'feet' })
+            dragRef.current = {
+              type: 'lotline', L, f, line: st.pts, cuts: side.map((x) => [x.properties.t0, x.properties.t1]), ia,
+              lo: A.t0 + minA, hi: Bp.t1 - minB, t: L.t, minW: Math.max(minA, minB), moved: false,
+              scale: engineLen && mapLen ? engineLen / mapLen : 1,
+            }
+            return true
+          }
+        }
         if (live.current.tool !== 'select' || !sel || !e) return false
         const key = sel.pond != null ? 'ponds' : sel.park != null ? 'parks' : null
         if (!key) return false
@@ -341,8 +424,32 @@ export default function NeighborhoodCard({ parcel, parts, code, acres, floodPoly
       },
       mouseup: (ev) => {
         const dr = dragRef.current
-        setDragGeom(null)
-        if (!dr || !dr.moved) { dragRef.current = null; return }
+        dragRef.current = null
+        setDragGeom(null); setDragShape(null); setLotDrag(null)
+        if (!dr || !dr.moved) return
+        dragEndedAt.current = performance.now()
+        const ed = live.current.edit
+        if (dr.type === 'handle' && dr.pts) {
+          const { kind, id } = dr.ht
+          if (kind === 'street') {
+            // a reshaped street lays its lots out fresh
+            commit({ ...ed, streets: ed.streets.map((st) => (st.id === id ? { ...st, pts: dr.pts, sideCuts: undefined, lotFrom: undefined } : st)) })
+            setSelected({ street: id })
+          } else if (kind === 'boundary') {
+            commit({ ...ed, boundary: polygonOf(dr.pts) })
+          } else {
+            commit({ ...ed, [kind]: ed[kind].map((x) => (x.id === id ? { ...x, geom: polygonOf(dr.pts) } : x)) })
+            setSelected({ [kind === 'ponds' ? 'pond' : 'park']: id })
+          }
+          return
+        }
+        if (dr.type === 'lotline') {
+          if (Math.abs(dr.t - dr.L.t) < 0.5) return // ended where it started
+          const cuts = dr.cuts.map((c) => [...c])
+          cuts[dr.ia][1] = dr.t; cuts[dr.ia + 1][0] = dr.t
+          commit({ ...ed, streets: ed.streets.map((st) => (st.id === dr.L.sid ? { ...st, sideCuts: { ...(st.sideCuts || {}), [dr.L.sgn]: cuts } } : st)) })
+          return
+        }
         const ll = [ev.lngLat.lng, ev.lngLat.lat]
         const e = live.current.edit
         const moved = shiftGeom(dr.geom, ll[0] - dr.start[0], ll[1] - dr.start[1])
@@ -377,8 +484,25 @@ export default function NeighborhoodCard({ parcel, parts, code, acres, floodPoly
       const lot = plan?.geojson?.features.find((f) => f.properties.kind === 'lot' && f.properties.n === selected.lot)
       if (lot) draw.push(turf.feature(turf.polygonToLine(lot).geometry, { kind: 'lot-sel' }))
     }
+    // the site boundary when it's being edited or has been
+    if (tool === 'boundary' || edit?.boundary) {
+      const ring = dragShape?.kind === 'boundary' ? dragShape.pts : ringOf(edit?.boundary || parcel.geometry)
+      draw.push(turf.lineString([...ring, ring[0]], { kind: 'boundary' }))
+    }
+    // lot lines you can drag (shown faintly while selecting)
+    if (tool === 'select' && !selected?.pond && !selected?.park) {
+      for (const f of plan?.geojson?.features || []) if (f.properties.kind === 'lot-line') draw.push(turf.feature(f.geometry, { kind: 'lotline' }))
+    }
+    if (lotDrag) draw.push(turf.lineString(lotDrag.coords, { kind: 'lotline-active' }))
+    // handles, and the reshaped outline while dragging one
+    const ht = handleTarget()
+    if (ht) {
+      const pts = dragShape && dragShape.kind === ht.kind ? dragShape.pts : ht.pts
+      if (dragShape && ht.kind !== 'boundary') draw.push(turf.lineString(ht.ring ? [...pts, pts[0]] : pts, { kind: 'lot-sel' }))
+      for (const k of ht.idx) draw.push(turf.point(pts[k], { kind: 'handle', soft: ht.radius > 0 }))
+    }
     editor.setOverlay({ streets: streetsFc, draw: turf.featureCollection(draw) })
-  }, [editing, editor, edit, selected, drawPts, cursor, tool, plan, dragGeom])
+  }, [editing, editor, edit, selected, drawPts, cursor, tool, plan, dragGeom, dragShape, lotDrag, parcel]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!std) return null
   if (!open) {
@@ -395,6 +519,8 @@ export default function NeighborhoodCard({ parcel, parts, code, acres, floodPoly
 
   // live measurement while drawing: street length, or a pond/park's outline area
   const measure = (() => {
+    if (lotDrag) return `Lot ${lotDrag.a}: ${lotDrag.wa} ft · Lot ${lotDrag.b}: ${lotDrag.wb} ft (lots can’t go below ${lotDrag.minW} ft here)`
+    if (dragShape?.kind === 'boundary') return `Site: ${fmt(turf.area(turf.polygon([[...dragShape.pts, dragShape.pts[0]]])) / 4046.86, 2)} ac`
     if (!editing || !drawPts.length || tool === 'select') return null
     const pts = cursor ? [...drawPts, cursor] : drawPts
     if (tool === 'draw') {
@@ -456,7 +582,7 @@ export default function NeighborhoodCard({ parcel, parts, code, acres, floodPoly
       {editing && (
         <div className="editor-box">
           <div className="seg" role="group" aria-label="Editing tool">
-            {[['select', 'Select'], ['draw', 'Street'], ['pond', 'Pond'], ['park', 'Park']].map(([id, label]) => (
+            {[['select', 'Select'], ['draw', 'Street'], ['pond', 'Pond'], ['park', 'Park'], ['boundary', 'Boundary']].map(([id, label]) => (
               <button key={id} className={tool === id ? 'on' : ''} onClick={() => { setTool(id); setDrawPts([]); if (id !== 'select') setSelected(null) }} aria-pressed={tool === id}>{label}</button>
             ))}
           </div>
@@ -465,11 +591,15 @@ export default function NeighborhoodCard({ parcel, parts, code, acres, floodPoly
               ? drawPts.length ? 'Click to add points. Double-click or press Enter to finish, Esc to cancel. Ending near a street connects to it.' : 'Click on the map to start a street. Starting near an existing street connects to it.'
               : tool === 'pond' || tool === 'park'
                 ? drawPts.length ? `Click around the ${tool}'s outline. Double-click or press Enter to finish (at least 3 points).` : `Click on the map to start outlining a ${tool}. Lots will move out of its way.`
-                : selected
-                  ? selected.pond != null || selected.park != null
-                    ? `${selected.pond != null ? 'Pond' : 'Park'} selected. Drag it to move it or press Delete to remove it.`
-                    : `${selected.street != null ? 'Street' : `Lot ${selected.lot}`} selected. Press Delete or use the button to remove it.`
-                  : 'Click a street, lot, pond, or park to select it.'}
+                : tool === 'boundary'
+                  ? 'Drag a corner of the site to reshape it, for example to leave out a piece. Lots refill inside the new boundary.'
+                  : selected
+                    ? selected.pond != null || selected.park != null
+                      ? `${selected.pond != null ? 'Pond' : 'Park'} selected. Drag it to move it, drag a white handle to reshape it, or press Delete.`
+                      : selected.street != null
+                        ? 'Street selected. Drag a white handle to reshape it, or press Delete to remove it.'
+                        : `Lot ${selected.lot} selected. Press Delete or use the button to remove it.`
+                    : 'Click a street, lot, pond, or park to select it. Drag a white line between two lots to resize them.'}
           </p>
           {measure && <p className="measure" aria-live="polite">{measure}</p>}
           {selected?.pond != null && pondSlider}
@@ -515,6 +645,7 @@ export default function NeighborhoodCard({ parcel, parts, code, acres, floodPoly
             </p>
           )}
           {plan.outside && <p className="note warn">Part of a pond or park is outside the parcel, so only the part inside is counted.</p>}
+          {edit?.boundary && <p className="note">Site boundary edited: drafting {fmt(plan.totalAc, 2)} ac of the {fmt(acres, 2)} ac {parts ? 'site' : 'parcel'}.{turf.area(turf.difference(turf.featureCollection([turf.feature(edit.boundary), parcel])) || turf.point([0, 0])) > 50 ? ' Part of the boundary now extends past the property line.' : ''}</p>}
           {plan.noFrontage > 0 && <p className="note warn">{plan.noFrontage} lot{plan.noFrontage > 1 ? 's were' : ' was'} left out because {plan.noFrontage > 1 ? 'they' : 'it'} had no street frontage for a driveway.</p>}
 
           <div className="mix-bar" aria-hidden="true">

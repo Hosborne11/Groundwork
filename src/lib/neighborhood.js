@@ -32,6 +32,7 @@ const mul = (a, k) => [a[0] * k, a[1] * k]
 const len = (a) => Math.hypot(a[0], a[1])
 const norm = (a) => { const l = len(a) || 1; return [a[0] / l, a[1] / l] }
 const perp = (a) => [-a[1], a[0]]
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1]
 function segDist(p, a, b) {
   const ab = sub(b, a), l2 = ab[0] * ab[0] + ab[1] * ab[1]
   const t = l2 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1]) / l2)) : 0
@@ -120,7 +121,7 @@ function rowPolygon(points, width = ROW_FT) {
 const circle = (c, r, n = 32) => poly(Array.from({ length: n }, (_, i) => { const t = (2 * Math.PI * i) / n; return [c[0] + r * Math.cos(t), c[1] + r * Math.sin(t)] }))
 
 /** Walk a street placing lots on one side; a lot just under the minimum is retried a bit wider. */
-function fillAlong(p, sgn, type, accept, startAt = 0) {
+function fillAlong(p, sgn, type, accept, startAt = 0, cuts = null) {
   const h = ROW_FT / 2
   const quad = (t, w) => {
     const t1 = Math.min(p.total, t + w)
@@ -128,12 +129,17 @@ function fillAlong(p, sgn, type, accept, startAt = 0) {
     const n0 = mul(perp(p.dir(t)), sgn), n1 = mul(perp(p.dir(t1)), sgn)
     return [add(a0, mul(n0, h)), add(a1, mul(n1, h)), add(a1, mul(n1, h + type.depth)), add(a0, mul(n0, h + type.depth))]
   }
+  // lot lines the user dragged: place exactly these lots, no automatic widening
+  if (cuts?.length) {
+    for (const [t0, t1] of cuts) if (t1 - t0 > 5 && t0 < p.total) accept(quad(t0, t1 - t0), type, { t0, t1: Math.min(p.total, t1), fixed: true })
+    return
+  }
   let t = startAt
   while (t + type.width * 0.6 <= p.total) {
-    const res = accept(quad(t, type.width), type)
+    const res = accept(quad(t, type.width), type, { t0: t, t1: Math.min(p.total, t + type.width) })
     if (typeof res === 'number') {
       const w2 = Math.ceil(type.width * Math.min(1.25, (accept.minLot / res) * 1.03)) // just wide enough to clear the minimum
-      if (t + w2 * 0.6 <= p.total && accept(quad(t, w2), type) === true) { t += w2; continue }
+      if (t + w2 * 0.6 <= p.total && accept(quad(t, w2), type, { t0: t, t1: Math.min(p.total, t + w2) }) === true) { t += w2; continue }
     }
     t += type.width
   }
@@ -520,7 +526,7 @@ export function neighborhoodDraft(parcel, opts) {
         lots.length = 0; lots.push(...snapshot)
         rows.splice(rows.length - 2, 2); rowBoxes.splice(rowBoxes.length - 2, 2)
       } else {
-        streets.push({ kind: 'spur', pts: sp.pts, sideTypes: { '-1': sp.T.i, 1: sp.T.i } })
+        streets.push({ kind: 'spur', pts: sp.pts, sideTypes: { '-1': sp.T.i, 1: sp.T.i }, lotFrom: sp.lotFrom })
         bulbs.push({ c: sp.end, dir: sp.dir })
         netPts.push(...path(sp.pts).pts)
       }
@@ -578,7 +584,7 @@ export function neighborhoodDraft(parcel, opts) {
     const depth = Math.max(D_MIN, Math.min(D_MAX, network.depth || 140))
     const types = sizedTypes(depth)
     const removed = removedLL.map(toFt)
-    const streets = network.streets.filter((st) => st.pts.length >= 2).map((st) => ({ kind: st.kind, pts: st.pts.map(toFt), sideTypes: st.sideTypes ? { ...st.sideTypes } : undefined }))
+    const streets = network.streets.filter((st) => st.pts.length >= 2).map((st) => ({ id: st.id, kind: st.kind, pts: st.pts.map(toFt), sideTypes: st.sideTypes ? { ...st.sideTypes } : undefined, sideCuts: st.sideCuts, lotFrom: st.lotFrom ? toFt(st.lotFrom) : undefined }))
     if (!streets.length) return null
 
     // dead ends get cul-de-sacs, unless they connect to another street or exit at the parcel edge
@@ -591,8 +597,10 @@ export function neighborhoodDraft(parcel, opts) {
         const e = atEnd ? st.pts[st.pts.length - 1] : st.pts[0]
         const prev = atEnd ? st.pts[st.pts.length - 2] : st.pts[1]
         const joins = streets.some((o, j) => j !== i && distToLine(e, path(o.pts).pts) < 30)
-        const atEdge = edgeLines.some((l) => distToLine(e, l) < 30) // a street that actually exits the parcel
-        if (!joins && !atEdge) bulbs.push({ c: e, dir: norm(sub(e, prev)) })
+        // only a street that actually reaches the property line (or the entrance) skips its turnaround;
+        // one that merely ends near the edge still needs a cul-de-sac
+        const atEdge = st.kind === 'entrance' || edgeLines.some((l) => distToLine(e, l) < 8)
+        if (!joins && !atEdge) bulbs.push({ c: e, dir: norm(sub(e, prev)), st })
       }
     })
 
@@ -601,7 +609,7 @@ export function neighborhoodDraft(parcel, opts) {
     const rowBoxes = rows.map(bboxOf)
 
     const lots = []
-    const accept = (ring, type) => {
+    const accept = (ring, type, span) => {
       if (lots.length >= maxLots) return
       const [f0, f1, b1, b0] = ring
       const ext = (() => { const d0 = norm(sub(b0, f0)), d1 = norm(sub(b1, f1)), e = 0.6 * len(sub(b0, f0)); try { return poly([b0, b1, add(b1, mul(d1, e)), add(b0, mul(d0, e))]) } catch { return null } })()
@@ -624,7 +632,7 @@ export function neighborhoodDraft(parcel, opts) {
         const o = clip(piece, l.f)
         if (o && areaFt(o.geometry) > 0.03 * a) return
       }
-      lots.push({ f: piece, bb, type: type.i, sf: a, ext, front: [ring[0], ring[1]], back: [ring[3], ring[2]] })
+      lots.push({ f: piece, bb, type: type.i, sf: a, ext, front: [ring[0], ring[1]], back: [ring[3], ring[2]], span: span && accept.side ? { ...accept.side, t0: span.t0, t1: span.t1 } : null })
       return true
     }
 
@@ -649,9 +657,17 @@ export function neighborhoodDraft(parcel, opts) {
     const PRIORITY = { main: 0, user: 0, spur: 1, connector: 2, loop: 2 }
     const fillOrder = [...sides].sort((x, y) => (PRIORITY[x.st.kind] ?? 1) - (PRIORITY[y.st.kind] ?? 1))
     accept.minLot = minLotSf
-    for (const sd of fillOrder) fillAlong(path(sd.st.pts), sd.sgn, sd.type, accept)
+    for (const sd of fillOrder) {
+      accept.side = { sid: sd.st.id, sgn: sd.sgn }
+      const pth = path(sd.st.pts)
+      // a cul-de-sac spur's lots start where it enters the open land, same as in the draft
+      const startAt = sd.st.kind === 'spur' && sd.st.lotFrom ? Math.max(0, Math.min(pth.total, dot(sub(sd.st.lotFrom, sd.st.pts[0]), norm(sub(sd.st.pts[sd.st.pts.length - 1], sd.st.pts[0]))))) : 0
+      fillAlong(pth, sd.sgn, sd.type, accept, startAt, sd.st.sideCuts?.[sd.sgn])
+    }
+    accept.side = null
     for (const bl of bulbs) {
-      const type = order[order.length - 1]
+      const own = bl.st?.kind === 'spur' && bl.st.sideTypes ? byIndex[bl.st.sideTypes[1]] : null
+      const type = own || order[order.length - 1]
       const r0 = BULB_R + 5, r1 = r0 + type.depth, baseAng = Math.atan2(bl.dir[1], bl.dir[0])
       const k = Math.max(3, Math.round((Math.PI * (r0 + type.depth * 0.5)) / type.width))
       const pt = (r, t) => [bl.c[0] + r * Math.cos(t), bl.c[1] + r * Math.sin(t)]
@@ -746,7 +762,21 @@ export function neighborhoodDraft(parcel, opts) {
     lots.forEach((l, i) => features.push(turf.feature(back(l.f.geometry), {
       kind: 'lot', n: i + 1, type: l.type, sf: Math.round(l.sf), color: LOT_COLORS[l.type],
       ...(l.w ? { w: Math.round(l.w), d: Math.round(l.d) } : {}),
+      ...(l.span ? { sid: l.span.sid, sgn: l.span.sgn, t0: l.span.t0, t1: l.span.t1 } : {}),
     })))
+    // lines shared by neighboring lots on the same street side: these can be dragged in the editor
+    const bySide = new Map()
+    lots.forEach((l, i) => { if (!l.span) return; const k = `${l.span.sid}|${l.span.sgn}`; if (!bySide.has(k)) bySide.set(k, []); bySide.get(k).push({ l, n: i + 1 }) })
+    for (const list of bySide.values()) {
+      list.sort((a, b) => a.l.span.t0 - b.l.span.t0)
+      for (let k = 1; k < list.length; k++) {
+        const A = list[k - 1].l, Bl = list[k].l
+        if (Math.abs(A.span.t1 - Bl.span.t0) > 1) continue // not touching (a pond or a cut in between)
+        features.push(turf.feature(back({ type: 'LineString', coordinates: [A.front[1], A.back[1]] }), {
+          kind: 'lot-line', sid: A.span.sid, sgn: A.span.sgn, t: A.span.t1, a: list[k - 1].n, b: list[k].n,
+        }))
+      }
+    }
     // driveway: from the street edge, a bit off-center like a side garage, into the lot
     for (const l of lots) {
       if (!l.front) continue
@@ -840,7 +870,8 @@ export function neighborhoodDraft(parcel, opts) {
       spurs: r.spurs || 0,
       absorbedAc: absorbedSf / 43560,
       network: {
-        streets: r.streets.map((st) => ({ kind: st.kind, pts: st.pts.map((p) => toLL(rot(p, r.ang))), sideTypes: st.sideTypes })),
+        // len: the street's length in the engine's own units, so the editor can convert positions exactly
+        streets: r.streets.map((st) => ({ id: st.id, kind: st.kind, pts: st.pts.map((p) => toLL(rot(p, r.ang))), sideTypes: st.sideTypes, sideCuts: st.sideCuts, len: path(st.pts).total, ...(st.lotFrom ? { lotFrom: toLL(rot(st.lotFrom, r.ang)) } : {}) })),
         ponds: r.ponds.map((x) => ({ id: x.id, geom: mapGeom(mapGeom(x.f.geometry, (p) => rot(p, r.ang)), toLL) })),
         parks: r.parks.map((x) => ({ id: x.id, geom: mapGeom(mapGeom(x.f.geometry, (p) => rot(p, r.ang)), toLL) })),
         depth: r.depth,
