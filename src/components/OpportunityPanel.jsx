@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { FACTORS, DEFAULT_WEIGHTS, SCORE_COLORS, topDrivers, areaName, TREND_METRICS, countyTotals, countyInfo } from '../lib/opportunity'
+import { FACTORS, DEFAULT_WEIGHTS, DEFAULT_EARLY_WEIGHTS, SCORE_COLORS, topDrivers, areaName, TREND_METRICS, countyTotals, countyInfo } from '../lib/opportunity'
 
 // 1st, 2nd, 3rd, 4th … 11th, 12th, 13th … 21st
 const ordinal = (n) => { const t = n % 100, o = n % 10; return `${n}${t >= 11 && t <= 13 ? 'th' : o === 1 ? 'st' : o === 2 ? 'nd' : o === 3 ? 'rd' : 'th'}` }
@@ -18,7 +18,11 @@ function CountyChips({ data, value, onChange }) {
   )
 }
 
-export default function OpportunityPanel({ data, scored, weights, setWeights, selected, onSelect, mode, setMode, metric, setMetric, yearIx, setYearIx, scale, setScale, county: pickerCounty }) {
+export default function OpportunityPanel({ data, scored, weights, setWeights, selected, onSelect, mode, setMode, metric, setMetric, yearIx, setYearIx, scale, setScale, county: pickerCounty, view, setView, earlyWeights, setEarlyWeights }) {
+  const early = view === 'early'
+  const factors = scored?.factors || FACTORS
+  const W = early ? earlyWeights : weights
+  const setW = early ? setEarlyWeights : setWeights
   const [county, setCounty] = useState(pickerCounty || 'All')
   useEffect(() => { if (pickerCounty) setCounty(pickerCounty) }, [pickerCounty])
   if (data === undefined) return <p className="muted">Loading opportunity data…</p>
@@ -47,8 +51,15 @@ export default function OpportunityPanel({ data, scored, weights, setWeights, se
     <div className="opp">
       {tabs}
       <CountyChips data={data} value={county} onChange={setCounty} />
+      <div className="seg" role="group" aria-label="Outlook view">
+        <button className={!early ? 'on' : ''} onClick={() => setView('now')} aria-pressed={!early}>Hot now</button>
+        <button className={early ? 'on' : ''} onClick={() => setView('early')} aria-pressed={early}>Ahead of the curve</button>
+      </div>
       <p className="flyout-note">
-        Where land is likely to develop next, scored from public records. Each county is scored against itself using the data it publishes. Click any hexagon for the reasons behind its score.
+        {early
+          ? 'Quiet areas that look like they’re next: busier neighbors, activity starting to pick up, land still available, and an easy drive with schools nearby.'
+          : 'Where land is busiest and most likely to develop now, scored from public records. Each county is scored against itself using the data it publishes.'}{' '}
+        Click any hexagon for the reasons behind its score.
       </p>
 
       <div className="opp-legend" aria-hidden="true">
@@ -66,7 +77,7 @@ export default function OpportunityPanel({ data, scored, weights, setWeights, se
             </div>
             <button className="close" onClick={() => onSelect(null)} aria-label="Clear selection">×</button>
           </div>
-          {FACTORS.map((f) => {
+          {factors.map((f) => {
             const p = sel.parts[f.key]
             const info = countyInfo(data, sel.h.county)
             if (p === undefined) {
@@ -81,7 +92,7 @@ export default function OpportunityPanel({ data, scored, weights, setWeights, se
               <div key={f.key} className="opp-factor">
                 <div className="opp-f-top"><span>{f.label}</span><span>{p == null ? 'n/a' : `${ordinal(Math.round(p * 100))} pct`}</span></div>
                 <div className="opp-bar"><i style={{ width: `${(p ?? 0) * 100}%` }} /></div>
-                <small>{f.explain(sel.h.m, sel.h.place)}</small>
+                <small>{f.explain(sel.h.m, sel.h.place, sel.h)}</small>
                 {info?.notes?.[f.key] && <small className="opp-note">{info.notes[f.key]}</small>}
               </div>
             )
@@ -98,19 +109,19 @@ export default function OpportunityPanel({ data, scored, weights, setWeights, se
       <section className="opp-weights">
         <div className="opp-w-head">
           <strong>What matters most</strong>
-          <button className="link-btn" onClick={() => setWeights(DEFAULT_WEIGHTS)}>Reset</button>
+          <button className="link-btn" onClick={() => setW(early ? DEFAULT_EARLY_WEIGHTS : DEFAULT_WEIGHTS)}>Reset</button>
         </div>
-        {FACTORS.map((f) => (
+        {factors.map((f) => (
           <label key={f.key} className="slider">
-            <span>{f.label} <strong>{weights[f.key]}</strong></span>
-            <input type="range" min={0} max={50} step={5} value={weights[f.key]} onChange={(e) => setWeights({ ...weights, [f.key]: Number(e.target.value) })} />
+            <span>{f.label} <strong>{W[f.key]}</strong></span>
+            <input type="range" min={0} max={50} step={5} value={W[f.key]} onChange={(e) => setW({ ...W, [f.key]: Number(e.target.value) })} />
           </label>
         ))}
       </section>
 
       {scored && (
         <section className="opp-top">
-          <strong>Top areas</strong>
+          <strong>{early ? 'Top areas ahead of the curve' : 'Top areas'}</strong>
           <ol>
             {(county === 'All' ? scored.ranked : scored.rankedBy[county] || []).slice(0, 10).map((x) => (
               <li key={x.h.id}>
@@ -118,7 +129,7 @@ export default function OpportunityPanel({ data, scored, weights, setWeights, se
                   <span className="opp-score sm" style={{ background: scoreColor(x.score), color: scoreText(x.score) }}>{x.score}</span>
                   <span className="opp-why">
                     <strong>{areaName(x.h.name) || 'Unnamed area'}{county === 'All' && <em className="opp-county"> · {x.h.county}</em>}</strong>
-                    <small>{topDrivers(x, weights).join(' · ') || 'mixed signals'}</small>
+                    <small>{topDrivers(x, W, factors).join(' · ') || 'mixed signals'}</small>
                   </span>
                 </button>
               </li>

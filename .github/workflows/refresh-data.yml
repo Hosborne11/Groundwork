@@ -49,10 +49,20 @@ jobs:
         continue-on-error: true
         run: npm run data:opportunity
 
-      - name: Cabarrus and York opportunity map
+      - name: Cabarrus, York, and Union opportunity map
         id: region
         continue-on-error: true
         run: npm run data:opportunity-region
+
+      - name: Schools
+        id: schools
+        continue-on-error: true
+        run: npm run data:schools
+
+      - name: Drive times to Uptown
+        id: commute
+        continue-on-error: true
+        run: npm run data:commute
 
       - name: Check the app still builds
         run: npm run build
@@ -74,9 +84,11 @@ jobs:
       # Mark the run as failed (GitHub emails you) if any data step had a problem,
       # after committing whatever did succeed.
       - name: Report any data step that failed
-        if: steps.water.outcome == 'failure' || steps.meck.outcome == 'failure' || steps.region.outcome == 'failure'
+        if: steps.water.outcome == 'failure' || steps.meck.outcome == 'failure' || steps.region.outcome == 'failure' || steps.schools.outcome == 'failure' || steps.commute.outcome == 'failure'
         run: |
           echo "Charlotte Water: ${{ steps.water.outcome }}"
           echo "Mecklenburg: ${{ steps.meck.outcome }}"
-          echo "Cabarrus and York: ${{ steps.region.outcome }}"
+          echo "Cabarrus, York, and Union: ${{ steps.region.outcome }}"
+          echo "Schools: ${{ steps.schools.outcome }}"
+          echo "Drive times: ${{ steps.commute.outcome }}"
           exit 1

@@ -10,7 +10,7 @@ import { charlotteWaterLines } from './lib/charlotteWater'
 import ParcelPanel from './components/ParcelPanel'
 import Search from './components/Search'
 import SideRail from './components/SideRail'
-import { loadOpportunity, scoreHexes, DEFAULT_WEIGHTS, SCORE_COLORS, trendCollection } from './lib/opportunity'
+import { loadOpportunity, scoreHexes, DEFAULT_WEIGHTS, DEFAULT_EARLY_WEIGHTS, SCORE_COLORS, trendCollection } from './lib/opportunity'
 import CountyPicker from './components/CountyPicker'
 import { loadCounties, countyAt } from './lib/counties'
 
@@ -34,7 +34,7 @@ export default function App() {
   const [loadingParcel, setLoadingParcel] = useState(false)
   const [error, setError] = useState(null)
   const [basemap, setBasemap] = useState('imagery')
-  const [layers, setLayers] = useState({ parcels: true, opportunity: false, rezonings: true, sewer: true, water: true, flood: false })
+  const [layers, setLayers] = useState({ parcels: true, opportunity: false, schools: false, rezonings: true, sewer: true, water: true, flood: false })
   const [zoom, setZoom] = useState(11)
   const [saved, setSaved] = useState(loadSaved)
   const [menu, setMenu] = useState(null)
@@ -46,7 +46,10 @@ export default function App() {
   const [oppSel, setOppSel] = useState(null)
   const showOpp = layers.opportunity || menu === 'opportunity'
   useEffect(() => { if (showOpp && oppData === undefined) loadOpportunity().then(setOppData) }, [showOpp, oppData])
-  const oppScored = useMemo(() => (oppData ? scoreHexes(oppData, oppWeights) : null), [oppData, oppWeights])
+  // Outlook has two views: what's hot now, and what's ahead of the curve (each with its own weights)
+  const [oppView, setOppView] = useState('now')
+  const [earlyWeights, setEarlyWeights] = useState(DEFAULT_EARLY_WEIGHTS)
+  const oppScored = useMemo(() => (oppData ? scoreHexes(oppData, oppView === 'early' ? earlyWeights : oppWeights, oppView) : null), [oppData, oppWeights, earlyWeights, oppView])
   // trends view: one measure in one year
   const [oppMode, setOppMode] = useState('score')
   const [trendMetric, setTrendMetric] = useState('filed')
@@ -122,6 +125,8 @@ export default function App() {
           rezonings: { type: 'geojson', data: turf.featureCollection([]), attribution: 'City of Charlotte' },
           counties: { type: 'geojson', data: turf.featureCollection([]), attribution: 'U.S. Census Bureau' },
           opportunity: { type: 'geojson', data: turf.featureCollection([]) },
+          schools: { type: 'geojson', data: turf.featureCollection([]) },
+          schoolLabels: { type: 'geojson', data: turf.featureCollection([]) }, // separate, so a font outage can't hide the dots
           siteplan: { type: 'geojson', data: turf.featureCollection([]) },
           // labels get their own source: if the label font server is unreachable, only labels fail, not the plan
           siteplanLabels: { type: 'geojson', data: turf.featureCollection([]) },
@@ -144,6 +149,15 @@ export default function App() {
             'fill-opacity': ['interpolate', ['linear'], ['get', 'score'], 0, 0, 25, 0, 45, 0.18, 70, 0.45, 100, 0.72],
           } },
           { id: 'opp-line', type: 'line', source: 'opportunity', layout: { visibility: 'none' }, paint: { 'line-color': '#FFFFFF', 'line-opacity': ['interpolate', ['linear'], ['get', 'score'], 25, 0, 45, 0.25], 'line-width': 0.5 } },
+          // schools: blue dots, darker for higher grades; names when zoomed in
+          { id: 'schools-dot', type: 'circle', source: 'schools', layout: { visibility: 'none' }, paint: {
+            'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 3, 14, 7],
+            'circle-color': ['match', ['get', 'level'], 'Elementary', '#7FB8F0', 'Middle', '#3C8DDB', 'High', '#1F4E9A', '#9AA5AE'],
+            'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': 1.5, 'circle-opacity': ['match', ['get', 'type'], 'Private', 0.6, 1],
+          } },
+          { id: 'schools-label', type: 'symbol', source: 'schoolLabels', minzoom: 12.5, layout: {
+            visibility: 'none', 'text-field': ['get', 'name'], 'text-font': ['Open Sans Semibold'], 'text-size': 11, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-max-width': 9,
+          }, paint: { 'text-color': '#FFFFFF', 'text-halo-color': 'rgba(28,42,51,0.85)', 'text-halo-width': 1.4 } },
           { id: 'opp-sel', type: 'line', source: 'opportunity', filter: ['==', ['get', 'id'], -1], paint: { 'line-color': '#D6157A', 'line-width': 3 } },
           { id: 'parcels', type: 'line', source: 'parcels', minzoom: PARCEL_MIN_ZOOM, paint: { 'line-color': '#FFFFFF', 'line-opacity': 0.8, 'line-width': ['interpolate', ['linear'], ['zoom'], 15, 0.6, 18, 1.6] } },
           { id: 'water', type: 'line', source: 'water', minzoom: LINE_MIN_ZOOM, paint: { 'line-color': '#2F7DE1', 'line-width': ['interpolate', ['linear'], ['zoom'], 15, 1.5, 18, 4] } },
@@ -239,7 +253,7 @@ export default function App() {
       m.getSource('base')?.setTiles(BASEMAPS[basemap])
       m.setLayoutProperty('labels', 'visibility', basemap === 'imagery' ? 'visible' : 'none')
     }
-    m.isStyleLoaded() ? apply() : m.once('load', apply)
+    m.isStyleLoaded() ? apply() : m.once('idle', apply) // 'load' may have already fired; 'idle' always comes
   }, [basemap])
 
   // layer visibility
@@ -257,7 +271,7 @@ export default function App() {
         m.setLayoutProperty(id, 'visibility', layers.rezonings ? 'visible' : 'none')
       }
     }
-    m.isStyleLoaded() ? apply() : m.once('load', apply)
+    m.isStyleLoaded() ? apply() : m.once('idle', apply) // 'load' may have already fired; 'idle' always comes
   }, [layers])
 
   // utility lines for the current view
@@ -343,8 +357,23 @@ export default function App() {
       for (const id of ['opp-fill', 'opp-line']) m.setLayoutProperty(id, 'visibility', showOpp ? 'visible' : 'none')
       m.setFilter('opp-sel', ['==', ['get', 'id'], showOpp && oppSel != null ? oppSel : -1])
     }
-    m.isStyleLoaded() ? apply() : m.once('load', apply)
+    m.isStyleLoaded() ? apply() : m.once('idle', apply) // 'load' may have already fired; 'idle' always comes
   }, [oppFc, showOpp, oppSel])
+
+  // schools: loaded with the opportunity data; shown with the Opportunity panel or the Schools layer
+  const showSchools = layers.schools || menu === 'opportunity'
+  useEffect(() => { if (layers.schools && oppData === undefined) loadOpportunity().then(setOppData) }, [layers.schools, oppData])
+  useEffect(() => {
+    const m = map.current
+    if (!m) return
+    const apply = () => {
+      const pts = (oppData?.schools || []).map((x) => turf.point([x.lng, x.lat], { name: x.name, level: x.level.split(' & ').pop(), type: x.type }))
+      m.getSource('schools')?.setData(turf.featureCollection(pts))
+      m.getSource('schoolLabels')?.setData(turf.featureCollection(pts))
+      for (const id of ['schools-dot', 'schools-label']) m.setLayoutProperty(id, 'visibility', showSchools ? 'visible' : 'none')
+    }
+    m.isStyleLoaded() ? apply() : m.once('idle', apply) // 'load' may have already fired; 'idle' always comes
+  }, [oppData, showSchools])
 
   const drawPlan = useCallback((fc) => {
     const m = map.current
@@ -400,6 +429,7 @@ export default function App() {
         opportunity={{
           data: oppData, scored: oppScored, weights: oppWeights, setWeights: setOppWeights, selected: oppSel,
           mode: oppMode, setMode: setOppMode, metric: trendMetric, setMetric: setTrendMetric, yearIx, setYearIx: setTrendYear,
+          view: oppView, setView: setOppView, earlyWeights, setEarlyWeights,
           scale: trendScale, setScale: setTrendScale,
           county: COUNTIES.find((c) => c.id === county)?.name || null,
           onSelect: (id, fly) => {

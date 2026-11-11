@@ -10,7 +10,9 @@
     "preview": "vite preview",
     "data:charlotte-water": "node scripts/build-charlotte-water.mjs",
     "data:opportunity": "node scripts/build-opportunity.mjs",
-    "data:opportunity-region": "node scripts/build-opportunity-region.mjs"
+    "data:opportunity-region": "node scripts/build-opportunity-region.mjs",
+    "data:schools": "node scripts/build-schools.mjs",
+    "data:commute": "node scripts/build-commute.mjs"
   },
   "dependencies": {
     "@turf/turf": "^7.1.0",

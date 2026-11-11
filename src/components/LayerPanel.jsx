@@ -1,6 +1,7 @@
 const ROWS = [
   { id: 'parcels', label: 'Parcel lines', swatch: '#FFFFFF', note: 'Mecklenburg, Cabarrus, York, Union' },
-  { id: 'opportunity', label: 'Opportunity', swatch: '#D7191C', note: 'Mecklenburg development outlook' },
+  { id: 'opportunity', label: 'Opportunity', swatch: '#41AB5D', note: 'Development outlook, four counties' },
+  { id: 'schools', label: 'Schools', swatch: '#3C8DDB', note: 'Public, charter, and York private schools' },
   { id: 'rezonings', label: 'Rezonings', swatch: '#F2A81D', note: 'Orange: in process · violet: recently approved' },
   { id: 'sewer', label: 'Sewer mains', swatch: '#38A169', note: 'Concord; Charlotte as reported' },
   { id: 'water', label: 'Water mains', swatch: '#2F7DE1', note: 'Concord; Charlotte as reported' },
