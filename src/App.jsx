@@ -12,6 +12,7 @@ import Search from './components/Search'
 import SideRail from './components/SideRail'
 import { loadOpportunity, scoreHexes, DEFAULT_WEIGHTS, DEFAULT_EARLY_WEIGHTS, SCORE_COLORS, trendCollection } from './lib/opportunity'
 import CountyPicker from './components/CountyPicker'
+import AssemblyPanel, { combineParcels, siteId } from './components/AssemblyPanel'
 import { loadCounties, countyAt } from './lib/counties'
 
 const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services'
@@ -67,6 +68,20 @@ export default function App() {
   const countiesRef = useRef(null)
   const keepCountyLabel = useRef(false)
   const editorRef = useRef(null) // set while the site plan editor is active; map clicks go to it
+  // site assembly: several parcels combined for one site plan (Shift-click to add or remove)
+  const [assembly, setAssembly] = useState([])
+  const [assemblyOpen, setAssemblyOpen] = useState(false)
+  const toggleAssembly = useCallback((feature) => {
+    setAssembly((cur) => (cur.some((p) => p.properties.id === feature.properties.id) ? cur.filter((p) => p.properties.id !== feature.properties.id) : [...cur, feature]))
+  }, [])
+  const assemblyClick = useRef(null)
+  assemblyClick.current = async (lngLat) => {
+    try {
+      const f = await parcelAtPoint(lngLat)
+      if (f) toggleAssembly(f)
+      else setError('No parcel here to add.')
+    } catch (e) { setError(`Couldn't load that parcel: ${e.message}`) }
+  }
   const [pendingPlan, setPendingPlan] = useState(null) // a saved plan to open once its parcel's panel loads // true right after 'Both counties', so the fly-to doesn't relabel it
 
   useEffect(() => {
@@ -126,6 +141,7 @@ export default function App() {
           counties: { type: 'geojson', data: turf.featureCollection([]), attribution: 'U.S. Census Bureau' },
           opportunity: { type: 'geojson', data: turf.featureCollection([]) },
           schools: { type: 'geojson', data: turf.featureCollection([]) },
+          assembly: { type: 'geojson', data: turf.featureCollection([]) },
           schoolLabels: { type: 'geojson', data: turf.featureCollection([]) }, // separate, so a font outage can't hide the dots
           siteplan: { type: 'geojson', data: turf.featureCollection([]) },
           // labels get their own source: if the label font server is unreachable, only labels fail, not the plan
@@ -149,6 +165,10 @@ export default function App() {
             'fill-opacity': ['interpolate', ['linear'], ['get', 'score'], 0, 0, 25, 0, 45, 0.18, 70, 0.45, 100, 0.72],
           } },
           { id: 'opp-line', type: 'line', source: 'opportunity', layout: { visibility: 'none' }, paint: { 'line-color': '#FFFFFF', 'line-opacity': ['interpolate', ['linear'], ['get', 'score'], 25, 0, 45, 0.25], 'line-width': 0.5 } },
+          // site assembly: chosen parcels in orange, combined site outlined
+          { id: 'assembly-fill', type: 'fill', source: 'assembly', filter: ['==', ['get', 'kind'], 'parcel'], paint: { 'fill-color': '#F59E0B', 'fill-opacity': 0.22 } },
+          { id: 'assembly-parcel-line', type: 'line', source: 'assembly', filter: ['==', ['get', 'kind'], 'parcel'], paint: { 'line-color': '#F59E0B', 'line-width': 1.5, 'line-dasharray': [2, 1.5] } },
+          { id: 'assembly-site-line', type: 'line', source: 'assembly', filter: ['==', ['get', 'kind'], 'site'], paint: { 'line-color': '#F59E0B', 'line-width': 3.5 } },
           // schools: blue dots, darker for higher grades; names when zoomed in
           { id: 'schools-dot', type: 'circle', source: 'schools', layout: { visibility: 'none' }, paint: {
             'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 3, 14, 7],
@@ -238,9 +258,11 @@ export default function App() {
         setOppSel(hex ? hex.properties.id : null)
         return
       }
+      if (e.originalEvent?.shiftKey) { assemblyClick.current([e.lngLat.lng, e.lngLat.lat]); return } // add to / remove from the site
       setFromPetition(null)
       selectParcel([e.lngLat.lng, e.lngLat.lat])
     })
+    m.boxZoom.disable() // Shift-click adds parcels to a site assembly instead of drawing a zoom box
     map.current = m
     return () => m.remove()
   }, [selectParcel])
@@ -375,6 +397,18 @@ export default function App() {
     m.isStyleLoaded() ? apply() : m.once('idle', apply) // 'load' may have already fired; 'idle' always comes
   }, [oppData, showSchools])
 
+  useEffect(() => {
+    const m = map.current
+    if (!m) return
+    const apply = () => {
+      const feats = assembly.map((p) => turf.feature(p.geometry, { kind: 'parcel' }))
+      const site = assembly.length > 1 ? combineParcels(assembly) : null
+      if (site) feats.push(turf.feature(site.geometry, { kind: 'site' }))
+      m.getSource('assembly')?.setData(turf.featureCollection(feats))
+    }
+    m.isStyleLoaded() ? apply() : m.once('idle', apply)
+  }, [assembly])
+
   const drawPlan = useCallback((fc) => {
     const m = map.current
     if (!m) return
@@ -423,7 +457,15 @@ export default function App() {
         parcelMinZoom={PARCEL_MIN_ZOOM}
         saved={saved}
         onPickSaved={(s) => { setMenu(null); flyToParcel(s.feature) }}
-        onOpenPlan={(p) => { setMenu(null); setPendingPlan({ id: p.id, parcelId: p.parcel.id }); flyToParcel(p.parcel.feature) }}
+        onOpenPlan={(p) => {
+          setMenu(null)
+          setPendingPlan({ id: p.id, parcelId: p.parcel.id })
+          if (p.parcel.parts) { // a plan across several parcels: rebuild the site assembly
+            setAssembly(p.parcel.parts); setAssemblyOpen(true); setSelected(null)
+            const [w, s, e, n] = turf.bbox(p.parcel.feature)
+            map.current?.fitBounds([[w, s], [e, n]], { padding: { top: 90, bottom: 80, left: 80, right: 460 }, maxZoom: 17 })
+          } else flyToParcel(p.parcel.feature)
+        }}
         onRemoveSaved={(pin) => setSaved((l) => l.filter((s) => s.pin !== pin))}
         rezonings={rezonings}
         opportunity={{
@@ -466,9 +508,27 @@ export default function App() {
         </div>
       )}
 
-      {selected && (
+      {/* site assembly bar */}
+      {assembly.length > 0 && !assemblyOpen && (
+        <div className="asm-bar">
+          <span><strong>Site assembly</strong> · {assembly.length} parcel{assembly.length === 1 ? '' : 's'} · {assembly.reduce((t, p) => t + (p.properties.acres || 0), 0).toFixed(1)} ac</span>
+          <button className="btn btn-primary" onClick={() => { setAssemblyOpen(true); setSelected(null) }}>Open</button>
+          <button className="btn" onClick={() => setAssembly([])}>Clear</button>
+        </div>
+      )}
+      {assemblyOpen && assembly.length > 0 ? (
+        <AssemblyPanel
+          parcels={assembly}
+          onRemove={(id) => setAssembly((cur) => cur.filter((p) => p.properties.id !== id))}
+          onClear={() => { setAssembly([]); setAssemblyOpen(false); editor.register(null); drawPlan(null) }}
+          onClose={() => { setAssemblyOpen(false); editor.register(null); drawPlan(null) }}
+          onPlan={drawPlan} editor={editor}
+          openPlanId={pendingPlan && pendingPlan.parcelId === siteId(assembly) ? pendingPlan.id : null} onPlanOpened={() => setPendingPlan(null)}
+        />
+      ) : selected && (
         <ParcelPanel key={selected.properties.id} parcel={selected} fromPetition={fromPetition} isSaved={isSaved} onSave={toggleSave} onClose={() => { editor.register(null); closePanel() }} onPlan={drawPlan} editor={editor}
-          openPlanId={pendingPlan && pendingPlan.parcelId === selected.properties.id ? pendingPlan.id : null} onPlanOpened={() => setPendingPlan(null)} />
+          openPlanId={pendingPlan && pendingPlan.parcelId === selected.properties.id ? pendingPlan.id : null} onPlanOpened={() => setPendingPlan(null)}
+          inAssembly={assembly.some((p) => p.properties.id === selected.properties.id)} onAssemble={() => toggleAssembly(selected)} />
       )}
     </div>
   )

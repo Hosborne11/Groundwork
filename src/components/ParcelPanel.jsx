@@ -157,7 +157,7 @@ function CheckRow({ label, swatch, state }) {
   )
 }
 
-export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onClose, onPlan, editor, openPlanId, onPlanOpened }) {
+export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onClose, onPlan, editor, openPlanId, onPlanOpened, inAssembly, onAssemble }) {
   const p = parcel.properties
   const isMeck = p.county === 'Mecklenburg'
   const isYork = p.county === 'York'
@@ -213,6 +213,7 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
         <div className="pin">{p.county} parcel {p.id}{p.vacant ? ' · Vacant' : ''}{p.landUse ? ` · ${p.landUse.toLowerCase()}` : ''}</div>
         <div className="actions">
           <button className={`btn ${isSaved ? 'btn-on' : 'btn-primary'}`} onClick={onSave}>{isSaved ? 'Saved' : 'Save parcel'}</button>
+          {onAssemble && <button className={`btn ${inAssembly ? 'on' : ''}`} onClick={onAssemble} title="Combine with other parcels for one site plan (or Shift-click parcels on the map)">{inAssembly ? 'Remove from site' : 'Add to site'}</button>}
           <button className="btn" onClick={copySummary}>{copied ? 'Copied' : 'Copy summary'}</button>
         </div>
       </div>

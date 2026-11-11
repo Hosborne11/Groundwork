@@ -91,7 +91,7 @@ export const EARLY_FACTORS = [
       if (!h.early) return 'Not enough data'
       const { prior, recent, priorYears, recentYears } = h.early
       if (recent < MIN_RECENT) return `Only ${recent} sale${recent === 1 ? '' : 's'}, approval${recent === 1 ? '' : 's'}, or new home${recent === 1 ? '' : 's'} in ${recentYears}, too few to call a trend`
-      return `${prior} sales, approvals, and new homes in ${priorYears}; ${recent} in ${recentYears}`
+      return `${prior} sale${prior === 1 ? '' : 's'}, approval${prior === 1 ? '' : 's'}, and new home${prior === 1 ? '' : 's'} in ${priorYears}; ${recent} in ${recentYears}`
     },
   },
   { ...FACTORS.find((f) => f.key === 'land'), weight: 25 },
@@ -257,6 +257,7 @@ export function areaName(raw) {
     .replace(/^State (?:Rd|Rte) (\d+)/, 'SR $1') // secondary road numbers, shown only when nothing better exists
     .replace(/^State Hwy (\d+)/, 'Hwy $1') // state highways are real roads: "State Hwy 49" -> "Hwy 49"
     .replace(/\b(Bv|Hy|Py|Wy|Cr|Av|Tl)\b/g, (m) => ABBREV[m])
+    .replace(/\bTrl\b/g, 'Trail') // "Indian Trl" and "Indian Trail" are the same road
   // secondary-road numbers like "State Rd 1442" (not state highways, which are named roads)
   const isRouteNumber = (n) => /^(State (Rd|Rte)|Co(unty)? Rd|SR) \d+[A-Z]?( [NSEW])?$/.test(n)
   let parts = streets.split(' & ')

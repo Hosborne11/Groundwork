@@ -46,7 +46,7 @@ const defaultMix = (w) => [{ width: w, share: 50 }, { width: w + 20, share: 30 }
  * Automatic neighborhood draft for a Charlotte N1 parcel. Draws on the map through onPlan.
  * floodPolys: floodplain shapes (null while the flood check runs).
  */
-export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floodFailed, onPlan, editor, openPlanId, onPlanOpened }) {
+export default function NeighborhoodCard({ parcel, parts, code, acres, floodPolys, floodFailed, onPlan, editor, openPlanId, onPlanOpened }) {
   const std = N1[code]
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState('standard')
@@ -111,7 +111,7 @@ export default function NeighborhoodCard({ parcel, code, acres, floodPolys, floo
         const saved = await savePlan({
           id: form.as === 'update' ? current.id : undefined,
           name, description: form.description,
-          parcel: { id: parcelId, county: parcel.properties.county, address: parcel.properties.address, feature: parcel },
+          parcel: { id: parcelId, county: parcel.properties.county, address: parcel.properties.address, feature: parcel, ...(parts ? { parts } : {}) },
           ...snap,
           summary: plan && !plan.error ? { lots: plan.lots, pass: plan.pass, district: plan.district, acres: plan.totalAc } : null,
         })
