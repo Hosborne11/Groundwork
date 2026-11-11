@@ -209,8 +209,14 @@ export default function App() {
             'line-color': '#F4D35E', 'line-width': ['interpolate', ['linear'], ['zoom'], 16, 0.8, 18, 1.6], 'line-dasharray': [4, 3], 'line-opacity': 0.85,
           } },
           { id: 'siteplan-lot-labels', type: 'symbol', source: 'siteplanLabels', minzoom: 16, filter: ['==', ['get', 'kind'], 'lot-label'],
-            layout: { 'text-field': ['get', 'label'], 'text-font': ['Open Sans Semibold'], 'text-size': ['interpolate', ['linear'], ['zoom'], 16, 9, 18, 13], 'text-allow-overlap': false },
+            // lot number; its frontage × depth too when zoomed in close
+            layout: { 'text-field': ['step', ['zoom'], ['get', 'label'], 17.6, ['format', ['get', 'label'], {}, '\n', {}, ['get', 'dims'], { 'font-scale': 0.78 }]],
+              'text-font': ['Open Sans Semibold'], 'text-size': ['interpolate', ['linear'], ['zoom'], 16, 9, 18, 13], 'text-allow-overlap': false },
             paint: { 'text-color': '#1C2A33', 'text-halo-color': 'rgba(255,255,255,0.7)', 'text-halo-width': 1.2 } },
+          // street lengths along each street
+          { id: 'siteplan-street-len', type: 'symbol', source: 'siteplanLabels', minzoom: 16, filter: ['==', ['get', 'kind'], 'street-len'],
+            layout: { 'symbol-placement': 'line-center', 'text-field': ['get', 'label'], 'text-font': ['Open Sans Semibold'], 'text-size': ['interpolate', ['linear'], ['zoom'], 16, 10, 18, 12], 'text-offset': [0, -0.9] },
+            paint: { 'text-color': '#F4D35E', 'text-halo-color': 'rgba(28,42,51,0.9)', 'text-halo-width': 1.5 } },
           { id: 'siteplan-area-labels', type: 'symbol', source: 'siteplanLabels', minzoom: 14.5, filter: ['==', ['get', 'kind'], 'area-label'],
             layout: { 'text-field': ['get', 'label'], 'text-font': ['Open Sans Semibold'], 'text-size': ['interpolate', ['linear'], ['zoom'], 15, 11, 18, 14], 'text-max-width': 8, 'symbol-sort-key': ['coalesce', ['get', 'rank'], 3] },
             paint: { 'text-color': '#FFFFFF', 'text-halo-color': 'rgba(28,42,51,0.85)', 'text-halo-width': 1.5 } },
@@ -413,8 +419,9 @@ export default function App() {
     const m = map.current
     if (!m) return
     const feats = fc?.features || []
-    m.getSource('siteplan')?.setData(turf.featureCollection(feats.filter((f) => f.geometry.type !== 'Point')))
-    m.getSource('siteplanLabels')?.setData(turf.featureCollection(feats.filter((f) => f.geometry.type === 'Point')))
+    const isLabel = (f) => f.geometry.type === 'Point' || f.properties.kind === 'street-len' // labels live in their own source
+    m.getSource('siteplan')?.setData(turf.featureCollection(feats.filter((f) => !isLabel(f))))
+    m.getSource('siteplanLabels')?.setData(turf.featureCollection(feats.filter(isLabel)))
     // fade the pink selection fill while a sketch is showing so the lots read clearly
     m.setPaintProperty('selected-fill', 'fill-opacity', fc ? 0 : 0.14)
   }, [])

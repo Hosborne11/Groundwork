@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import * as turf from '@turf/turf'
 import { neighborhoodKml, LOT_COLORS } from '../lib/neighborhood'
 import { nearbyStreets } from '../lib/charlotte'
-import { N1, CONSERVATION_DISTRICTS, CONSERVATION_MIN_ACRES, MIXED_INCOME_MIN_ACRES } from '../data/charlotteUdo'
+import { N1, CONSERVATION_DISTRICTS, CONSERVATION_MIN_ACRES, MIXED_INCOME_MIN_ACRES, HOUSING, LOT_HOUSING, unitsFor, housingAllowed, FRONT_SETBACK_ASSUMED, MIN_HOUSE_DEPTH } from '../data/charlotteUdo'
 import { usePlans, savePlan, getPlan, renamePlan, duplicatePlan, deletePlan } from '../lib/planStore'
 
 const fmt = (n, d = 0) => Number(n).toLocaleString('en-US', { maximumFractionDigits: d, minimumFractionDigits: d })
@@ -73,6 +73,7 @@ export default function NeighborhoodCard({ parcel, parts, code, acres, floodPoly
   const live = useRef({}) // latest values for map handlers
   live.current = { edit, removed, tool, drawPts, selected, plan }
   const nextId = useRef(1)
+  const [housing, setHousing] = useState('sf') // what the lots hold: single-family, duplex, triplex, a mix, or (not by right) townhomes/apartments
 
   // ---- saved plans ----
   const parcelId = parcel.properties.id
@@ -80,13 +81,13 @@ export default function NeighborhoodCard({ parcel, parts, code, acres, floodPoly
   const [current, setCurrent] = useState(null) // { id, name, description, key } of the plan that's open
   const [form, setForm] = useState(null) // { as: 'new' | 'rename', id?, name, description }
   const [saveError, setSaveError] = useState(null)
-  const snapshot = () => ({ settings: { mode, mix, reserve, variant }, edit, removed })
+  const snapshot = () => ({ settings: { mode, mix, reserve, variant, housing }, edit, removed })
   // compare plans without remembered lot sizes, which fill in on their own after a refill
   const keyOf = (snap) => JSON.stringify(snap, (k, v) => (k === 'sideTypes' ? undefined : v))
   const dirty = current && keyOf(snapshot()) !== current.key
 
   const applyPlan = (p) => {
-    setMode(p.settings.mode); setMix(p.settings.mix); setReserve(p.settings.reserve); setVariant(p.settings.variant || 0)
+    setMode(p.settings.mode); setMix(p.settings.mix); setReserve(p.settings.reserve); setVariant(p.settings.variant || 0); setHousing(p.settings.housing || 'sf')
     const e = p.edit ? { ...p.edit, streets: p.edit.streets.map((st) => ({ ...st, id: st.id ?? nextId.current++ })) } : null
     if (e) nextId.current = Math.max(nextId.current, ...e.streets.map((st) => (typeof st.id === 'number' ? st.id + 1 : 1)))
     setEdit(e); setRemoved(p.removed || []); setHistory([]); setSelected(null); setEditing(false); setOpen(true)
@@ -391,6 +392,38 @@ export default function NeighborhoodCard({ parcel, parts, code, acres, floodPoly
   }
 
   const setMixRow = (i, k, v) => setMix((m) => m.map((row, j) => (j === i ? { ...row, [k]: v } : row)))
+
+  // live measurement while drawing: street length, or a pond/park's outline area
+  const measure = (() => {
+    if (!editing || !drawPts.length || tool === 'select') return null
+    const pts = cursor ? [...drawPts, cursor] : drawPts
+    if (tool === 'draw') {
+      if (pts.length < 2) return null
+      const ft = turf.length(turf.lineString(pts), { units: 'feet' })
+      const last = pts.length >= 2 ? turf.distance(pts[pts.length - 2], pts[pts.length - 1], { units: 'feet' }) : 0
+      return `Street so far: ${fmt(ft)} ft · this segment ${fmt(last)} ft`
+    }
+    if (pts.length < 3) return pts.length === 2 ? `Side: ${fmt(turf.distance(pts[0], pts[1], { units: 'feet' }))} ft` : null
+    const ac = turf.area(turf.polygon([[...pts, pts[0]]])) / 4046.86
+    return `${tool === 'pond' ? 'Pond' : 'Park'} so far: ${fmt(ac, 2)} ac`
+  })()
+
+  // ---- housing and UDO checks ----
+  const ruleCode = plan && !plan.error ? plan.district : code
+  const rules = N1[ruleCode] || std
+  const allowed = housingAllowed(housing, ruleCode)
+  const unitsOf = (c) => (housing === 'mix' ? unitsFor(mix[c.i]?.home || 'sf') : LOT_HOUSING.some((h) => h.key === housing) ? unitsFor(housing) : 1)
+  const homes = plan && !plan.error ? plan.counts.reduce((t, c) => t + c.lots * unitsOf(c), 0) : 0
+  const needDepth = FRONT_SETBACK_ASSUMED + (rules?.rearFt || 0) + MIN_HOUSE_DEPTH
+  const ck = plan?.check || {}
+  const checks = plan && !plan.error ? [
+    { label: 'Lot area', ok: plan.pass, detail: `Smallest lot ${fmt(ck.minSf)} sq ft; ${ruleCode} needs ${fmt(plan.minLotSf)}${plan.capped ? '. At the conservation maximum lot count' : ''}` },
+    { label: 'Lot width', ok: ck.minWidth == null || ck.minWidth >= minWidth - 0.5, detail: ck.minWidth ? `Narrowest street frontage ${ck.minWidth} ft; needs ${minWidth} ft (cul-de-sac lots are measured at the setback)` : 'Measured on the lot mix' },
+    { label: 'Street access', ok: true, detail: plan.noFrontage ? `Every lot fronts a street with room for a driveway (${plan.noFrontage} without frontage were left out)` : 'Every lot fronts a street with room for a driveway' },
+    { label: 'Room for a house', ok: ck.minDepth == null || ck.minDepth >= needDepth, detail: `Shallowest lot ${ck.minDepth ?? '—'} ft deep; a house needs ${needDepth} ft for a ${FRONT_SETBACK_ASSUMED} ft front setback (assumed), the ${rules?.rearFt} ft rear setback, and a ${MIN_HOUSE_DEPTH} ft deep home` },
+    { label: 'Housing type', ok: allowed.ok, detail: allowed.ok === true ? `${HOUSING.find((h) => h.key === housing).label} ${housing === 'mix' ? 'types are' : 'is'} allowed by right in ${ruleCode}` : allowed.ok === 'limited' ? `Allowed in ${ruleCode} only on a small scale` : `Not allowed by right in ${ruleCode}` },
+  ] : []
+  const passAll = !!plan && !plan.error && checks.every((c) => c.ok === true) && !plan.conflicts?.length
   const download = () => {
     const blob = new Blob([neighborhoodKml(plan, `Groundwork draft · ${parcel.properties.address || parcel.properties.id}`)], { type: 'application/vnd.google-earth.kml+xml' })
     const url = URL.createObjectURL(blob)
@@ -438,6 +471,7 @@ export default function NeighborhoodCard({ parcel, parts, code, acres, floodPoly
                     : `${selected.street != null ? 'Street' : `Lot ${selected.lot}`} selected. Press Delete or use the button to remove it.`
                   : 'Click a street, lot, pond, or park to select it.'}
           </p>
+          {measure && <p className="measure" aria-live="polite">{measure}</p>}
           {selected?.pond != null && pondSlider}
           <div className="nb-actions">
             {tool === 'draw' && drawPts.length >= 2 && <button className="btn btn-primary" onClick={finishDrawing}>Finish street</button>}
@@ -464,9 +498,16 @@ export default function NeighborhoodCard({ parcel, parts, code, acres, floodPoly
           {/* results first */}
           <div className="nb-total">
             <span className="nb-lots">{plan.lots}</span><span className="nb-unit">lots</span>
-            <span className={`pass ${plan.pass ? 'yes' : 'no'}`}>{plan.pass ? 'PASS' : 'CHECK'}</span>
+            {homes !== plan.lots && <span className="nb-homes">· {homes} homes</span>}
+            <span className={`pass ${passAll ? 'yes' : 'no'}`}>{passAll ? 'PASS' : 'CHECK'}</span>
           </div>
-          <p className="nb-density">{fmt(plan.density, 2)} lots per acre · every lot meets the {plan.district} minimum{plan.capped ? ' · at the conservation maximum' : ''}</p>
+          <p className="nb-density">{fmt(plan.density, 2)} lots per acre{homes !== plan.lots ? ` · ${fmt(homes / plan.totalAc, 1)} homes per acre` : ''}{plan.capped ? ' · at the conservation maximum' : ''}</p>
+          {allowed.ok !== true && (
+            <div className={`note ${allowed.ok === false ? 'warn' : ''}`}>
+              {allowed.note}
+              {allowed.ok === false && <> <button className="link-btn" onClick={() => setHousing('sf')}>Draft single-family lots instead</button></>}
+            </div>
+          )}
 
           {plan.conflicts?.length > 0 && (
             <p className="note warn">
@@ -481,8 +522,18 @@ export default function NeighborhoodCard({ parcel, parts, code, acres, floodPoly
           </div>
           <ul className="mix-list">
             {plan.counts.filter((c) => c.lots).map((c) => (
-              <li key={c.i}><i className="dot" style={{ background: c.color }} />{c.width} × {c.depth} ft<span>{Math.round((c.lots / plan.lots) * 100)}%</span><strong>{c.lots} lots</strong></li>
+              <li key={c.i}><i className="dot" style={{ background: c.color }} />{c.width} × {c.depth} ft{housing === 'mix' ? ` · ${HOUSING.find((h) => h.key === (mix[c.i]?.home || 'sf')).label.toLowerCase()}` : ''}<span>{Math.round((c.lots / plan.lots) * 100)}%</span><strong>{c.lots} lots</strong></li>
             ))}
+          </ul>
+
+          <ul className="udo-checks" aria-label={`UDO checks for ${plan.district}`}>
+            {checks.map((c) => (
+              <li key={c.label} className={c.ok === true ? 'ok' : c.ok === 'limited' ? 'limited' : 'bad'}>
+                <span className="mark" aria-hidden="true">{c.ok === true ? '✓' : c.ok === 'limited' ? '!' : '✗'}</span>
+                <div><strong>{c.label}</strong><span>{c.detail}</span></div>
+              </li>
+            ))}
+            <li className="unchecked"><span className="mark" aria-hidden="true">–</span><div><strong>Not checked</strong><span>Tree save and open space requirements, street design standards, stormwater, building coverage and height (no buildings are drawn), and parking.</span></div></li>
           </ul>
 
           <div className="nb-grid">
@@ -533,6 +584,12 @@ export default function NeighborhoodCard({ parcel, parts, code, acres, floodPoly
             {modes.map((m) => <button key={m.id} className={mode === m.id ? 'on' : ''} onClick={() => setMode(m.id)} aria-pressed={mode === m.id}>{m.label}</button>)}
           </div>
         )}
+        <label className="housing-pick">
+          <span>Housing type</span>
+          <select value={housing} onChange={(e) => setHousing(e.target.value)}>
+            {HOUSING.map((h) => <option key={h.key} value={h.key}>{h.label}{housingAllowed(h.key, code).ok === false ? ' (needs rezoning)' : ''}</option>)}
+          </select>
+        </label>
         <div className="mix-editor">
           <div className="mix-head"><span>Lot mix (frontage width)</span><span>Share</span></div>
           {mix.map((m, i) => (
@@ -544,6 +601,11 @@ export default function NeighborhoodCard({ parcel, parts, code, acres, floodPoly
               <label className="sr-only" htmlFor={`s${i}`}>Lot type {i + 1} share in percent</label>
               <input id={`s${i}`} type="number" min={0} max={100} step={5} value={m.share} onChange={(e) => setMixRow(i, 'share', e.target.value)} />
               <span className="unit">%</span>
+              {housing === 'mix' && (
+                <select className="mix-home" value={m.home || 'sf'} onChange={(e) => setMixRow(i, 'home', e.target.value)} aria-label={`Lot type ${i + 1} housing`}>
+                  {LOT_HOUSING.map((h) => <option key={h.key} value={h.key}>{h.label}</option>)}
+                </select>
+              )}
               {mix.length > 1 && <button className="mix-x" onClick={() => { setMix((r) => r.filter((_, j) => j !== i)); clearSizes() }} aria-label={`Remove lot type ${i + 1}`}>×</button>}
             </div>
           ))}

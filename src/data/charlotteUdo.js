@@ -102,3 +102,42 @@ export function parseZoning(code = '') {
   const conditional = parts.some((p) => p === 'CD' || p === 'INNOV')
   return { base, conditional, overlays: parts.filter((p) => p !== 'CD' && p !== 'INNOV'), isUdo: !!districtByCode[base] }
 }
+
+// ---- Housing types in Neighborhood 1 (UDO Article 4, §4.1 and the N1-F multi-family limits) ----
+// N1-A to N1-E: single-family, duplex, and triplex on all lots; quadraplex only on arterial streets
+// with one affordable unit. N1-F adds small-scale multi-family: at most two multi-family attached
+// (townhome) buildings per lot, with 250 sq ft of open space per unit, or one multi-family stacked
+// (apartment) building per lot. Larger townhome or apartment communities need Neighborhood 2 zoning.
+export const HOUSING = [
+  { key: 'sf', label: 'Single-family', units: 1 },
+  { key: 'duplex', label: 'Duplex', units: 2 },
+  { key: 'triplex', label: 'Triplex', units: 3 },
+  { key: 'mix', label: 'Mix by lot size' },
+  { key: 'townhomes', label: 'Townhomes' },
+  { key: 'apartments', label: 'Apartments' },
+]
+export const LOT_HOUSING = HOUSING.filter((h) => h.units) // what one lot can hold in a by-right draft
+export const unitsFor = (key) => HOUSING.find((h) => h.key === key)?.units || 1
+
+/** { ok: true | 'limited' | false, note } for a housing type in a district. */
+export function housingAllowed(key, code) {
+  const nf = code === 'N1-F'
+  if (key === 'sf' || key === 'duplex') return { ok: true }
+  if (key === 'triplex' || key === 'mix') return { ok: true, note: 'Triplexes also have site layout standards in the UDO that this draft doesn’t check.' }
+  if (key === 'townhomes') {
+    return nf
+      ? { ok: 'limited', note: 'N1-F allows townhomes (multi-family attached), but at most two townhome buildings per lot, with 250 sq ft of open space per unit. This draft lays out lots; it doesn’t place townhome buildings yet.' }
+      : { ok: false, note: `Townhomes aren’t allowed in ${code}. They need N1-F (at most two townhome buildings per lot) or a rezoning to Neighborhood 2, which is how most Charlotte townhome communities are approved.` }
+  }
+  if (key === 'apartments') {
+    return nf
+      ? { ok: 'limited', note: 'N1-F allows one small apartment building (multi-family stacked) per lot. This draft lays out lots; it doesn’t place apartment buildings yet.' }
+      : { ok: false, note: `Apartments aren’t allowed in ${code}. They need a rezoning to Neighborhood 2 or a higher-intensity district.` }
+  }
+  return { ok: false }
+}
+
+// Front setbacks depend on the street type and existing setbacks on the block, so drafts assume
+// 20 ft on new local streets. A house needs room for that, the rear setback, and a modest footprint.
+export const FRONT_SETBACK_ASSUMED = 20
+export const MIN_HOUSE_DEPTH = 30

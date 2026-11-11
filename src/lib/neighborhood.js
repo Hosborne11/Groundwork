@@ -737,7 +737,16 @@ export function neighborhoodDraft(parcel, opts) {
       features.push(turf.feature(back(pk.f.geometry), { kind: 'park', id: pk.id, label: `Park ${(a / 43560).toFixed(2)} ac` }))
     }
     if (roads) features.push(turf.feature(back(roads.geometry), { kind: 'road' }))
-    lots.forEach((l, i) => features.push(turf.feature(back(l.f.geometry), { kind: 'lot', n: i + 1, type: l.type, sf: Math.round(l.sf), color: LOT_COLORS[l.type] })))
+    for (const l of lots) {
+      if (!l.front) continue
+      const [f0, f1] = l.front, [b0, b1] = l.back
+      l.w = len(sub(f1, f0))
+      l.d = len(sub(mul(add(b0, b1), 0.5), mul(add(f0, f1), 0.5)))
+    }
+    lots.forEach((l, i) => features.push(turf.feature(back(l.f.geometry), {
+      kind: 'lot', n: i + 1, type: l.type, sf: Math.round(l.sf), color: LOT_COLORS[l.type],
+      ...(l.w ? { w: Math.round(l.w), d: Math.round(l.d) } : {}),
+    })))
     // driveway: from the street edge, a bit off-center like a side garage, into the lot
     for (const l of lots) {
       if (!l.front) continue
@@ -750,7 +759,13 @@ export function neighborhoodDraft(parcel, opts) {
       if (end) features.push(turf.feature(back({ type: 'LineString', coordinates: [at, end] }), { kind: 'driveway' }))
     }
     // street centerlines (drawn as a dashed center stripe when zoomed in)
-    for (const st of r.streets) if (st.pts.length >= 2) features.push(turf.feature({ type: 'LineString', coordinates: st.pts.map((p) => toLL(rot(p, r.ang))) }, { kind: 'centerline' }))
+    for (const st of r.streets) {
+      if (st.pts.length < 2) continue
+      const coords = st.pts.map((p) => toLL(rot(p, r.ang)))
+      features.push(turf.feature({ type: 'LineString', coordinates: coords }, { kind: 'centerline' }))
+      const ft = Math.round(path(st.pts).total)
+      if (ft >= 120) features.push(turf.feature({ type: 'LineString', coordinates: coords }, { kind: 'street-len', label: `${ft.toLocaleString()} ft` }))
+    }
     // every shape carries its own fill color so the map style stays simple
     const FILL = { road: '#1C2A33', pond: '#3A8DDE', green: '#38A169', park: '#2F855A', flood: '#5BB5D9' }
     for (const f of features) f.properties.fill = f.properties.kind === 'lot' ? f.properties.color : FILL[f.properties.kind] || '#FFFFFF'
@@ -775,7 +790,7 @@ export function neighborhoodDraft(parcel, opts) {
     // labels (points)
     const labels = []
     for (const f of features) {
-      if (f.properties.kind === 'lot') labels.push(turf.feature(turf.centroid(f).geometry, { label: String(f.properties.n), kind: 'lot-label' }))
+      if (f.properties.kind === 'lot') labels.push(turf.feature(turf.centroid(f).geometry, { label: String(f.properties.n), dims: f.properties.w ? `${f.properties.w} × ${f.properties.d} ft` : '', kind: 'lot-label' }))
       else if (f.properties.label) {
         const pt = labelPoint(f)
         if (pt) labels.push(turf.feature({ type: 'Point', coordinates: pt }, { label: f.properties.label, kind: 'area-label', rank: LABEL_RANK[f.properties.kind] ?? 3 }))
@@ -795,6 +810,11 @@ export function neighborhoodDraft(parcel, opts) {
     const counts = r.types.map((t) => ({ ...t, depth: Math.round(r.depth), lots: lots.filter((l) => l.type === t.i).length, color: LOT_COLORS[t.i] }))
     const openSf = pondSf + parkSf + greenSf + floodSf
     const minActual = Math.min(...lots.map((l) => l.sf))
+    // the regular lots (laid out on a street frontage) give the narrowest width and shallowest depth;
+    // cul-de-sac pie lots are narrow at the street by design and measured at the setback instead
+    const regular = lots.filter((l) => l.w && l.w >= 0.8 * Math.min(...r.types.map((t) => t.width)))
+    const minWidthActual = regular.length ? Math.min(...regular.map((l) => l.w)) : null
+    const minDepthActual = lots.some((l) => l.d) ? Math.min(...lots.filter((l) => l.d).map((l) => l.d)) : null
     return {
       lots: lots.length,
       counts,
@@ -812,6 +832,7 @@ export function neighborhoodDraft(parcel, opts) {
       openPct: (openSf / grossSf) * 100,
       density: lots.length / (grossSf / 43560),
       minLotSf,
+      check: { minSf: Math.round(minActual), minWidth: minWidthActual && Math.round(minWidthActual), minDepth: minDepthActual && Math.round(minDepthActual) },
       pass: minActual >= minLotSf - 1 && lots.length <= maxLots,
       capped: conservation && lots.length >= maxLots,
       district: opts.mode === 'bonus' && base.bonusTo ? base.bonusTo : opts.code,
