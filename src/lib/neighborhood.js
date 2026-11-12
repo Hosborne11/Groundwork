@@ -193,7 +193,9 @@ export function neighborhoodDraft(parcel, opts) {
   const minWidth = conservation ? 40 : std.minWidthFt
   const mix = (opts.mix?.length ? opts.mix : [{ width: std.minWidthFt, share: 100 }])
     .map((t, i) => ({ i, share: t.share, width: Math.max(t.width, minWidth) }))
-  const maxLots = conservation ? Math.floor(grossSf / base.minLotSf) : Infinity
+  // lot count caps: Charlotte conservation subdivisions, and towns with a units-per-acre limit
+  const densityCap = std.maxDensity ? Math.floor((grossSf / 43560) * std.maxDensity) : Infinity
+  const maxLots = Math.min(conservation ? Math.floor(grossSf / base.minLotSf) : Infinity, densityCap)
   // Block depth follows the lot mix: a 30 ft lot in N1-E wants ~100 ft of depth, not the 150-220 ft
   // blocks that suit 70-90 ft lots. Narrow bounds mean more rows of streets on small-lot districts.
   const wBase = Math.min(...((opts.mix?.length ? opts.mix.map((m) => Number(m.width) || 70) : [70])))
@@ -245,6 +247,7 @@ export function neighborhoodDraft(parcel, opts) {
   function apartmentDraft() {
     const A = { ...APARTMENT, ...(opts.apt || {}) }
     if (std.maxStories) A.stories = Math.min(A.stories, std.maxStories) // height limit (Indian Trail MFR: 40 ft)
+    if (std.apt?.stories) A.stories = Math.min(A.stories, std.apt.stories) // Concord RC, Monroe RHD: 4 stories
     const ang = angles[0] // the parcel's long direction
     const U = turf.feature(mapGeom(usable.geometry, (p) => rot(p, -ang)))
     const [minX, minY, maxX, maxY] = bboxOf(U)
@@ -335,7 +338,8 @@ export function neighborhoodDraft(parcel, opts) {
     if (!buildings) return { error: 'No apartment buildings fit. The buildable area may be too narrow; try the townhome scenario instead.' }
     // yield is capped by what the lots can park: scale units down to the surface spaces
     const floorUnits = specs.reduce((t, sp) => t + unitsFor(sp.L), 0)
-    const densityCap = std.sfPerUnit ? Math.floor(grossSf / std.sfPerUnit) : Infinity // land per unit (Indian Trail MFR: 3,350 sq ft)
+    const densityCap = std.sfPerUnit ? Math.floor(grossSf / std.sfPerUnit) // land per unit (Indian Trail MFR: 3,350 sq ft)
+      : std.apt?.density ? Math.floor((grossSf / 43560) * std.apt.density) : Infinity // units per acre (Concord RC 15, Monroe RHD 10)
     const cap = Math.min(Math.floor(spaces / Math.max(1, A.parkRatio)), densityCap)
     const scale = Math.min(1, cap / Math.max(1, floorUnits))
     // round down per building, then hand out the remainder, so the total never passes the cap
@@ -1073,7 +1077,7 @@ export function neighborhoodDraft(parcel, opts) {
       ...(th ? { buildings, bldgMaxFt, bldgUnits, product: 'townhomes', thStyle: th.style } : {}),
       check: { minSf: Math.round(minActual), minWidth: minWidthActual && Math.round(minWidthActual), minDepth: minDepthActual && Math.round(minDepthActual) },
       pass: minActual >= minLotSf - 1 && lots.length <= maxLots,
-      capped: conservation && lots.length >= maxLots,
+      capped: lots.length >= maxLots && maxLots < Infinity ? (conservation ? 'conservation' : 'density') : false,
       district: opts.mode === 'bonus' && base.bonusTo ? base.bonusTo : opts.code,
       variants: results.length,
       spurs: r.spurs || 0,

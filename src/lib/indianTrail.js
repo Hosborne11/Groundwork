@@ -69,27 +69,7 @@ export async function itApprovalContext(parcel, code) {
   }).filter(Boolean).filter((p) => !turf.booleanContains(p.shape, turf.point(c)) || p.lots > 1)
     .sort((a, b) => a.miles - b.miles)
 
-  // frontage: TIGER roads whose line passes within ~60 ft of the parcel
-  const reach = turf.buffer(parcel, 60, { units: 'feet' })
-  const rank = (m) => (m === 'S1100' ? 0 : m === 'S1200' ? 1 : m === 'S1400' ? 2 : 3)
-  const front = (ok(roads) || []).filter((r) => turf.booleanIntersects(r, reach)).sort((a, b) => rank(a.properties.mtfcc) - rank(b.properties.mtfcc))
-  const frontage = front.length ? { name: front[0].properties.name, kind: ROAD_KIND[front[0].properties.mtfcc] || 'street', arterial: rank(front[0].properties.mtfcc) <= 1 } : null
-  // no road touches the parcel: name the nearest one, measured edge to edge
-  let nearestRoad = null
-  if (!frontage) {
-    const outline = turf.polygonToLine(parcel)
-    const lines = (outline.type === 'FeatureCollection' ? outline.features : [outline]).flatMap((l) => (l.geometry.type === 'LineString' ? [l] : l.geometry.coordinates.map((c) => turf.lineString(c))))
-    const pv = lines.flatMap((l) => l.geometry.coordinates)
-    for (const r of ok(roads) || []) {
-      for (const path of r.geometry.coordinates) {
-        if (path.length < 2) continue
-        const rl = turf.lineString(path)
-        let d = Math.min(...pv.map((v) => turf.pointToLineDistance(v, rl, { units: 'feet' })))
-        for (const v of path) for (const l of lines) d = Math.min(d, turf.pointToLineDistance(v, l, { units: 'feet' }))
-        if (!nearestRoad || d < nearestRoad.feet) nearestRoad = { name: r.properties.name, feet: Math.round(d) }
-      }
-    }
-  }
+  const { frontage, nearestRoad } = frontageFrom(parcel, ok(roads) || [])
 
   // adjoining zoning (excluding the parcel's own footprint)
   const nbr = new Set()
@@ -108,4 +88,37 @@ export async function itApprovalContext(parcel, code) {
     mapOnly: true, // precedents come from the zoning map: approved cases only
     failed: [stats, roads, zones].filter((r) => !ok(r)).length,
   }
+}
+
+/**
+ * Street frontage from TIGER roads: the most significant road whose line passes within ~60 ft of
+ * the parcel, or, when none touches it, the nearest road and its distance edge to edge.
+ */
+export function frontageFrom(parcel, roads) {
+  const reach = turf.buffer(parcel, 60, { units: 'feet' })
+  const rank = (m) => (m === 'S1100' ? 0 : m === 'S1200' ? 1 : m === 'S1400' ? 2 : 3)
+  // TIGER often carries a road twice (e.g. "State Rd 1399" and "Country Ln"); prefer the common name
+  const named = (r) => (/^(state (rd|road|hwy)|sr|us hwy|nc hwy)\s*\d+/i.test(r.properties.name || '') ? 1 : 0)
+  const front = roads.filter((r) => turf.booleanIntersects(r, reach))
+    .sort((a, b) => rank(a.properties.mtfcc) - rank(b.properties.mtfcc) || named(a) - named(b))
+  const frontage = front.length ? { name: front[0].properties.name, kind: ROAD_KIND[front[0].properties.mtfcc] || 'street', arterial: rank(front[0].properties.mtfcc) <= 1 } : null
+  let nearestRoad = null
+  if (!frontage) {
+    const outline = turf.polygonToLine(parcel)
+    const lines = (outline.type === 'FeatureCollection' ? outline.features : [outline]).flatMap((l) => (l.geometry.type === 'LineString' ? [l] : l.geometry.coordinates.map((c) => turf.lineString(c))))
+    const pv = lines.flatMap((l) => l.geometry.coordinates)
+    for (const r of roads) {
+      for (const path of r.geometry.coordinates) {
+        if (path.length < 2) continue
+        const rl = turf.lineString(path)
+        let d = Math.min(...pv.map((v) => turf.pointToLineDistance(v, rl, { units: 'feet' })))
+        for (const v of path) for (const l of lines) d = Math.min(d, turf.pointToLineDistance(v, l, { units: 'feet' }))
+        // within 15 ft counts as the same distance, so a common name wins over a state route number
+        if (!nearestRoad || d < nearestRoad.feet - 15 || (Math.abs(d - nearestRoad.feet) <= 15 && named(r) < nearestRoad.named)) {
+          nearestRoad = { name: r.properties.name, feet: Math.round(d), named: named(r) }
+        }
+      }
+    }
+  }
+  return { frontage, nearestRoad }
 }

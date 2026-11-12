@@ -1,4 +1,5 @@
 import { IT_RULES, IT_ORDER } from './indianTrail'
+import { TOWN_RULES, TOWN_ORDERS, TOWN_PLANS } from './towns'
 // Charlotte Unified Development Ordinance (effective June 1, 2023).
 // Only values verified against the published text are filled in. Everything else
 // is marked as not yet loaded so the app never shows a guessed number.
@@ -127,6 +128,16 @@ export const unitsFor = (key) => HOUSING.find((h) => h.key === key)?.units || 1
 
 /** { ok: true | 'limited' | false, note } for a housing type in a district. */
 export function housingAllowed(key, code) {
+  const tr = TOWN_RULES[code]
+  if (tr) {
+    if (key === 'sf') return { ok: true }
+    if (key === 'apartments') {
+      return tr.apt
+        ? { ok: true, note: `${code} allows apartments in ${tr.jurisdiction}: up to ${tr.apt.density} units an acre and ${tr.apt.stories} stories.` }
+        : { ok: false, note: `Apartments aren’t allowed in ${code}. In ${tr.jurisdiction} they need ${tr.jurisdiction === 'Concord' ? 'RC' : 'RHD'} zoning.` }
+    }
+    return { ok: false, note: `Groundwork drafts ${tr.jurisdiction}’s ${code} district as single-family lots. Duplexes and attached homes have their own standards in the town’s ordinance and usually go through conditional zoning.` }
+  }
   if (IT_RULES[code]) {
     if (IT_RULES[code].apartment) {
       return key === 'apartments'
@@ -172,7 +183,8 @@ export const MIN_HOUSE_DEPTH = 30
 // N1 districts from lowest to highest intensity; an upzoning scenario offers the ones after the current district.
 export const N1_ORDER = ['N1-A', 'N1-B', 'N1-C', 'N1-D', 'N1-E', 'N1-F']
 export const upzoneOptions = (code) => {
-  const order = IT_ORDER.includes(code) ? IT_ORDER : N1_ORDER
+  const town = TOWN_RULES[code]?.jurisdiction
+  const order = town ? TOWN_ORDERS[town] : IT_ORDER.includes(code) ? IT_ORDER : N1_ORDER
   const i = order.indexOf(code)
   return i < 0 ? [] : order.slice(i + 1)
 }
@@ -182,6 +194,10 @@ export const upzoneOptions = (code) => {
  * Returns { fit: 'consistent' | 'inconsistent' | 'unknown', note }.
  */
 export function policyFit(code, placeName) {
+  if (TOWN_RULES[code]) {
+    const t = TOWN_RULES[code].jurisdiction
+    return { fit: 'unknown', note: `${t} weighs rezonings against its ${TOWN_PLANS[t]}, which Groundwork doesn’t check here, so look up the parcel’s land use designation before relying on a scenario.` }
+  }
   if (IT_RULES[code]) return { fit: 'unknown', note: 'Indian Trail weighs rezonings against its Comprehensive Plan (the “Indian Trail Framework Plan”), which isn’t published as map data, so Groundwork doesn’t check plan consistency here.' }
   if (!placeName) return { fit: 'unknown', note: 'The 2040 Policy Map place type for this parcel isn’t loaded.' }
   const family = code.startsWith('N1') ? 'Neighborhood 1' : code.startsWith('N2') ? 'Neighborhood 2' : null
@@ -223,5 +239,5 @@ export const APARTMENT = {
 
 // ---- One rules registry for every town Groundwork drafts in ----
 // Charlotte's N1/N2 districts plus Indian Trail's; district names don't collide.
-export const RULES = { ...N1, ...IT_RULES }
+export const RULES = { ...N1, ...IT_RULES, ...TOWN_RULES }
 export const jurisdictionOf = (code) => RULES[code]?.jurisdiction || 'Charlotte'

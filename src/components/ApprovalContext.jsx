@@ -2,6 +2,10 @@ import { useEffect, useState } from 'react'
 import * as turf from '@turf/turf'
 import { approvalContext } from '../lib/charlotte'
 import { itApprovalContext } from '../lib/indianTrail'
+import { concordApprovalContext, monroeApprovalContext } from '../lib/towns'
+
+// each town's own lookup; Charlotte uses its petition history
+const LOOKUP = { 'Indian Trail': itApprovalContext, Concord: concordApprovalContext, Monroe: monroeApprovalContext }
 import { policyFit, jurisdictionOf } from '../data/charlotteUdo'
 
 const monthYear = (d) => d?.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
@@ -12,7 +16,7 @@ const titleCase = (t) => t.toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCas
  * Factors staff and City Council weigh on a rezoning, shown for the scenario district.
  * Deliberately a list of factors, not a prediction.
  */
-export default function ApprovalContext({ parcel, code, placeType, editor, onFactors }) {
+export default function ApprovalContext({ parcel, code, placeType, editor, onFactors, apartments = false }) {
   const [ctx, setCtx] = useState(null)
   const [state, setState] = useState('loading')
   const [active, setActive] = useState(null)
@@ -20,7 +24,7 @@ export default function ApprovalContext({ parcel, code, placeType, editor, onFac
   useEffect(() => {
     let live = true
     setState('loading'); setCtx(null); setActive(null)
-    ;(jurisdictionOf(code) === 'Indian Trail' ? itApprovalContext : approvalContext)(parcel, code)
+    ;(LOOKUP[jurisdictionOf(code)] || approvalContext)(parcel, code)
       .then((c) => { if (live) { setCtx(c); setState('done') } })
       .catch(() => { if (live) setState('error') })
     return () => { live = false }
@@ -54,15 +58,17 @@ export default function ApprovalContext({ parcel, code, placeType, editor, onFac
     }
     const city = ctx.cityCounts
     const cityTotal = Object.values(city).reduce((a, b) => a + b, 0)
-    const isN2 = code.startsWith('N2') || code === 'MFR' // the higher-intensity districts expected on thoroughfares
+    const isN2 = code.startsWith('N2') || code === 'MFR' || apartments // the higher-intensity scenarios expected on thoroughfares
     const factors = [
-      { tone: fit.fit === 'consistent' ? 'good' : fit.fit === 'inconsistent' ? 'warn' : 'neutral', title: jurisdictionOf(code) === 'Charlotte' ? '2040 Policy Map' : 'Comprehensive Plan', text: fit.note },
+      { tone: fit.fit === 'consistent' ? 'good' : fit.fit === 'inconsistent' ? 'warn' : 'neutral', title: jurisdictionOf(code) === 'Charlotte' ? '2040 Policy Map' : jurisdictionOf(code) === 'Indian Trail' ? 'Comprehensive Plan' : 'Land use plan', text: fit.note },
       {
-        tone: ctx.precedents.some((p) => p.status === 'Approved') ? 'good' : 'neutral',
+        tone: ctx.precedents.some((p) => p.status === 'Approved') || ctx.conditionalCounts?.within2 > 0 ? 'good' : 'neutral',
         title: 'Nearby precedents',
-        text: ctx.mapOnly
+        text: ctx.conditionalCounts
+          ? `${ctx.conditionalCounts.within5.toLocaleString()} parcels within 5 miles carry conditional zoning (CD) on ${ctx.town}’s map, about ${Math.round(ctx.conditionalCounts.acres5).toLocaleString()} acres; ${ctx.conditionalCounts.within2.toLocaleString()} within 2 miles. ${ctx.town}’s map doesn’t record case numbers or which district a conditional rezoning parallels, so this shows how common conditional rezonings are nearby, not approvals to ${code} specifically.`
+          : ctx.mapOnly
           ? (ctx.precedents.length
-            ? `${plural(ctx.precedents.length, 'approved conditional rezoning')} to ${code} within 5 miles on ${ctx.town}’s zoning map, covering ${ctx.precedents.reduce((t, p) => t + (p.lots || 0), 0).toLocaleString()} lots${(() => { const y = Math.max(...ctx.precedents.map((p) => p.year || 0)); return y ? `, the most recent from ${y}` : '' })()}; ${within2.length ? `${within2.length} within 2 miles` : 'none within 2 miles'}. Only approved cases appear on a zoning map, so withdrawn or denied requests aren’t counted.`
+            ? `${plural(ctx.precedents.length, 'approved conditional rezoning')} to ${code} within 5 miles on ${ctx.town}’s zoning map, covering ${ctx.precedents.some((p) => p.lots) ? `${ctx.precedents.reduce((t, p) => t + (p.lots || 0), 0).toLocaleString()} lots` : `about ${Math.round(ctx.precedents.reduce((t, p) => t + (p.acres || 0), 0)).toLocaleString()} acres`}${(() => { const y = Math.max(...ctx.precedents.map((p) => p.year || 0)); return y ? `, the most recent from ${y}` : '' })()}; ${within2.length ? `${within2.length} within 2 miles` : 'none within 2 miles'}. Only approved cases appear on a zoning map, so withdrawn or denied requests aren’t counted.`
             : `No approved conditional rezonings to ${code} within 5 miles on ${ctx.town}’s zoning map. This would be a first for the area.`)
           : ctx.precedents.length
             ? `${plural(ctx.precedents.length, 'rezoning')} to ${code} within 5 miles since the UDO took effect in June 2023 (${tally(ctx.precedents)}); ${within2.length ? `${within2.length} of them within 2 miles` : 'none within 2 miles'}.`
@@ -77,7 +83,7 @@ export default function ApprovalContext({ parcel, code, placeType, editor, onFac
         tone: ctx.frontage?.arterial ? 'good' : isN2 || ctx.nearestRoad ? 'warn' : 'neutral',
         title: 'Street frontage',
         text: ctx.frontage
-          ? `Fronts ${ctx.frontage.name ? titleCase(ctx.frontage.name) : 'a street'} (${ctx.frontage.kind}).${isN2 ? (ctx.frontage.arterial ? ` ${code === 'MFR' ? 'Multifamily zoning is' : 'Neighborhood 2 districts are'} usually expected along thoroughfares like this.` : ` ${code === 'MFR' ? 'Multifamily zoning is' : 'Neighborhood 2 districts are'} usually expected along thoroughfares, not local streets.`) : code === 'N1-F' ? (ctx.frontage.arterial ? ' N1-F is usually applied along streets like this.' : ' N1-F is usually applied along arterial streets.') : ''}`
+          ? `Fronts ${ctx.frontage.name ? titleCase(ctx.frontage.name) : 'a street'} (${ctx.frontage.kind}).${isN2 ? (ctx.frontage.arterial ? ` ${code === 'MFR' || apartments ? 'Multifamily development is' : 'Neighborhood 2 districts are'} usually expected along thoroughfares like this.` : ` ${code === 'MFR' || apartments ? 'Multifamily development is' : 'Neighborhood 2 districts are'} usually expected along thoroughfares, not local streets.`) : code === 'N1-F' ? (ctx.frontage.arterial ? ' N1-F is usually applied along streets like this.' : ' N1-F is usually applied along arterial streets.') : ''}`
           : ctx.nearestRoad ? `No road touches the parcel; the nearest is ${titleCase(ctx.nearestRoad.name || 'an unnamed road')}, about ${Math.round(ctx.nearestRoad.feet / 10) * 10} ft away. Access may depend on an easement or a neighboring parcel, which a rezoning (and any development) would need to solve.` : 'No street frontage found in the street data.',
       },
       {

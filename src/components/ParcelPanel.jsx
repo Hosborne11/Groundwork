@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { openReportWindow, writeSiteReport } from '../lib/siteReport'
 import { IT_RULES, IT_SOURCE } from '../data/indianTrail'
+import { CONCORD_RULES, MONROE_RULES, TOWN_SOURCES } from '../data/towns'
 import * as turf from '@turf/turf'
 import { nearestSewer, nearestWater, floodShare, soilsFor, zoningAt } from '../lib/gis'
 import { charlotteZoning, placeType } from '../lib/charlotte'
@@ -134,7 +135,7 @@ async function soilsCheck(parcel) {
 async function cabarrusZoningCheck(parcel) {
   const z = await zoningAt(turf.pointOnFeature(parcel).geometry.coordinates)
   if (!z.length) return { tone: 'none', value: 'Unincorporated or not mapped', detail: 'Check Cabarrus County zoning' }
-  return { tone: 'none', value: z.map((x) => x.code).join(' / '), detail: z.map((x) => x.town).join(', ') }
+  return { tone: 'none', value: z.map((x) => x.code).join(' / '), detail: z.map((x) => x.town).join(', '), zones: z }
 }
 
 function CheckRow({ label, swatch, state }) {
@@ -187,9 +188,14 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
   const floodPolys = flood.status === 'done' ? flood.polys || [] : flood.status === 'error' ? [] : null
   const zoneParts = cltZoning ? parseZoning(cltZoning.code) : null
   const canSketch = isMeck && zoneParts && N1[zoneParts.base] && !zoneParts.conditional
-  // Indian Trail base residential districts (conditional CZ- districts have site-specific plans)
-  const itCode = isUnion && uZoning.status === 'done' && uZoning.town === 'Indian Trail' && IT_RULES[uZoning.code] && !IT_RULES[uZoning.code].apartment ? uZoning.code : null
-  const itRule = itCode ? IT_RULES[itCode] : null
+  // Town residential districts Groundwork drafts in (conditional districts have site-specific plans)
+  const concordZone = p.county === 'Cabarrus' && cabZoning.status === 'done' ? cabZoning.zones?.find((z) => z.town === 'Concord')?.code?.trim() : null
+  const town = isUnion && uZoning.status === 'done'
+    ? (uZoning.town === 'Indian Trail' && IT_RULES[uZoning.code] && !IT_RULES[uZoning.code].apartment ? { name: 'Indian Trail', code: uZoning.code, rule: IT_RULES[uZoning.code], source: IT_SOURCE, kind: 'single-family' }
+      : uZoning.town === 'Monroe' && MONROE_RULES[uZoning.code] ? { name: 'Monroe', code: uZoning.code, rule: MONROE_RULES[uZoning.code], source: TOWN_SOURCES.Monroe, kind: 'residential' } : null)
+    : concordZone && CONCORD_RULES[concordZone] ? { name: 'Concord', code: concordZone, rule: CONCORD_RULES[concordZone], source: TOWN_SOURCES.Concord, kind: 'residential' } : null
+  const itCode = town?.code || null // (kept for the site report)
+  const itRule = town?.rule || null
   const saleDate = `${p.saleMonth ? `${p.saleMonth}/` : ''}${p.saleYear || ''}`
   const sale = p.salePrice ? `${money(p.salePrice)} · ${saleDate}` : p.nominalSale ? `Nominal transfer, not a market sale · ${saleDate}` : 'No recorded sale'
 
@@ -257,15 +263,17 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
       {itRule && (
         <section className="section">
           <h3>What you can build</h3>
-          <div className="zone-head"><strong className="zone-code">{itCode}</strong> <span>Indian Trail single-family</span></div>
+          <div className="zone-head"><strong className="zone-code">{itCode}</strong> <span>{town.name} {town.kind}</span></div>
           <dl className="facts">
             <dt>Min lot area</dt><dd>{itRule.minLotSf.toLocaleString()} sq ft</dd>
-            <dt>Min frontage</dt><dd>{itRule.minWidthFt} ft</dd>
-            <dt>Front setback</dt><dd>{itRule.frontFt} ft ({itRule.frontMajorFt} ft on thoroughfares)</dd>
+            <dt>Min lot width</dt><dd>{itRule.minWidthFt} ft</dd>
+            {itRule.maxDensity && <><dt>Max density</dt><dd>{itRule.maxDensity} units per acre</dd></>}
+            <dt>Front setback</dt><dd>{itRule.frontFt} ft{itRule.frontMajorFt ? ` (${itRule.frontMajorFt} ft on thoroughfares)` : ''}</dd>
             <dt>Side / rear setback</dt><dd>{itRule.sideFt} ft / {itRule.rearFt} ft</dd>
-            <dt>Max height · coverage</dt><dd>{itRule.heightFt} ft · {itRule.coverage}</dd>
+            <dt>Max height</dt><dd>{itRule.stories ? `${itRule.stories} stories` : `${itRule.heightFt} ft`}{itRule.coverage ? ` · coverage ${itRule.coverage}` : ''}</dd>
+            {itRule.apt && <><dt>Apartments</dt><dd>Allowed, up to {itRule.apt.density} units per acre and {itRule.apt.stories} stories</dd></>}
           </dl>
-          <p className="muted-small">{IT_SOURCE}. Cluster and open space subdivisions (conditional zoning) allow smaller lots in exchange for common open space.</p>
+          <p className="muted-small">{town.source}. Cluster and other conditional subdivisions can allow smaller lots in exchange for common open space.</p>
           <NeighborhoodCard parcel={parcel} code={itCode} acres={p.acres} floodPolys={floodPolys} floodFailed={flood.status === 'error'} onPlan={onPlan} editor={editor} openPlanId={openPlanId} onPlanOpened={onPlanOpened} onSummary={setDraftSummary} />
         </section>
       )}
