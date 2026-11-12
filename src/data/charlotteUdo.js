@@ -23,6 +23,7 @@ export const N1 = {
   // working minimums Groundwork drafts with (22 ft units on ~100 ft sublots), since N2 sublot
   // dimensions are set case by case through conditional rezonings rather than one UDO table.
   'N2-A': { minLotSf: 2000, minWidthFt: 20, sideFt: 5, rearFt: 20, heightFt: 48, bonusTo: null, townhome: true },
+  'N2-B': { minLotSf: 2000, minWidthFt: 20, sideFt: 10, rearFt: 30, heightFt: 48, bonusTo: null, apartment: true },
 }
 export const N1_COVERAGE = 'Max building coverage: 40% on lots of 10,000 sq ft or more, 50% on smaller lots'
 export const N1_USES = {
@@ -125,6 +126,11 @@ export const unitsFor = (key) => HOUSING.find((h) => h.key === key)?.units || 1
 
 /** { ok: true | 'limited' | false, note } for a housing type in a district. */
 export function housingAllowed(key, code) {
+  if (N1[code]?.apartment) {
+    if (key === 'apartments') return { ok: true, note: 'N2-B is Charlotte’s district for small apartment communities (multi-family stacked), up to 48 ft tall.' }
+    if (key === 'townhomes') return { ok: true, note: 'N2-B also allows townhomes; pick the N2-A scenario to draft them.' }
+    return { ok: true, note: 'N2-B also allows house-scale buildings at N1-E standards, but Groundwork drafts N2-B scenarios as apartments.' }
+  }
   if (N1[code]?.townhome) {
     if (key === 'townhomes') return { ok: true, note: 'N2-A is Charlotte’s district for townhomes (multi-family attached). Nearly all recent townhome communities were approved as N2-A conditional rezonings.' }
     if (key === 'apartments') return { ok: false, note: 'Apartments (multi-family stacked) need N2-B or a higher-intensity district, not N2-A.' }
@@ -185,4 +191,16 @@ export const TOWNHOME = {
     { key: 'front', label: 'Front-loaded garages' },
     { key: 'alley', label: 'Rear alley-loaded' },
   ],
+}
+
+// ---- Apartments (N2-B rezoning scenarios) ----
+// Garden-apartment assumptions for yield estimates: 3-story buildings up to 160 ft long and
+// 65 ft deep, ~85% of floor area in units, surface parking in shared courts between buildings.
+export const APARTMENT = {
+  stories: 3,       // within the 48 ft height limit
+  unitSf: 1000,     // average unit, gross
+  bldgDepth: 65,
+  maxBldgFt: 160,
+  efficiency: 0.85, // share of floor area that is units rather than halls and stairs
+  parkRatio: 1.5,   // surface spaces per unit; the practical limit on garden-apartment yield
 }

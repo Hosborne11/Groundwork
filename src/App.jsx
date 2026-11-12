@@ -189,7 +189,7 @@ export default function App() {
           // concept site plan: fills, then edges, center stripes, and labels
           { id: 'siteplan-fill', type: 'fill', source: 'siteplan', filter: ['in', ['geometry-type'], ['literal', ['Polygon', 'MultiPolygon']]], paint: {
             'fill-color': ['to-color', ['get', 'fill'], '#FFFFFF'],
-            'fill-opacity': ['match', ['get', 'kind'], 'lot', 0.85, 'road', 0.96, 'pond', 0.9, 'park', 0.62, 'green', 0.3, 'flood', 0.32, 'building', 0.94, 'alley', 0.9, 0.3],
+            'fill-opacity': ['match', ['get', 'kind'], 'lot', 0.85, 'road', 0.96, 'pond', 0.9, 'park', 0.62, 'green', 0.3, 'flood', 0.32, 'building', 0.94, 'alley', 0.9, 'parking', 0.9, 0.3],
           } },
           { id: 'siteplan-edges', type: 'line', source: 'siteplan', filter: ['in', ['get', 'kind'], ['literal', ['road', 'pond', 'park', 'flood', 'building']]], paint: {
             'line-color': ['match', ['get', 'kind'], 'road', '#EDE6D8', 'pond', '#A9D8F8', 'park', '#1D6B45', 'flood', '#4AA8D6', '#FFFFFF'],

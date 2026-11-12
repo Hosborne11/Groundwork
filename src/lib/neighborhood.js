@@ -1,5 +1,5 @@
 import * as turf from '@turf/turf'
-import { N1 } from '../data/charlotteUdo'
+import { N1, APARTMENT } from '../data/charlotteUdo'
 
 /*
  * Automatic neighborhood draft for a parcel.
@@ -217,6 +217,8 @@ export function neighborhoodDraft(parcel, opts) {
   for (let i = 1; i < ring.length; i++) edges.push({ l: len(sub(ring[i], ring[i - 1])), a: Math.atan2(ring[i][1] - ring[i - 1][1], ring[i][0] - ring[i - 1][0]) })
   const angles = [...new Set(edges.sort((a, b) => b.l - a.l).slice(0, 3).flatMap((e) => [e.a, e.a + Math.PI / 2]).map((a) => Math.round(a * 100) / 100))].slice(0, 4)
 
+  if (opts.product === 'apartments') return apartmentDraft()
+
   let results = [] // alternate layouts (none in editor mode)
   // Editor mode: fill lots along a street network the user has shaped.
   if (opts.network) {
@@ -237,6 +239,145 @@ export function neighborhoodDraft(parcel, opts) {
     pick = chosen.redo?.() || chosen
   }
   return finish(pick)
+
+  /* ---------- apartments: garden buildings around shared parking courts ---------- */
+  function apartmentDraft() {
+    const A = { ...APARTMENT, ...(opts.apt || {}) }
+    const ang = angles[0] // the parcel's long direction
+    const U = turf.feature(mapGeom(usable.geometry, (p) => rot(p, -ang)))
+    const [minX, minY, maxX, maxY] = bboxOf(U)
+    const strs = streetsFt.map((l) => l.map((p) => rot(p, -ang)))
+    const B = (g) => mapGeom(mapGeom(g, (p) => rot(p, ang)), toLL)
+
+    // entrance: the boundary point nearest an existing street
+    const ringU = U.geometry.coordinates[0]
+    let entry = [minX, (minY + maxY) / 2], bestD = Infinity
+    for (let i = 1; i < ringU.length; i++) for (let t = 0; t <= 4; t++) {
+      const p = add(ringU[i - 1], mul(sub(ringU[i], ringU[i - 1]), t / 4))
+      for (const l of strs) for (const q of l) { const d = len(sub(p, q)); if (d < bestD) { bestD = d; entry = p } }
+    }
+
+    // stormwater pond at the corner farthest from the entrance
+    const pondShare = Math.min(0.2, Math.max(0, (opts.reservePct ?? 8) / 100))
+    const rPond = Math.sqrt((usableSf * pondShare) / Math.PI)
+    let pondC = null, pondF = null, pondSf = 0
+    if (rPond > 25) {
+      const cen = turf.centroid(U).geometry.coordinates
+      for (const far of ringU.slice(1).sort((a, b) => len(sub(b, entry)) - len(sub(a, entry))).slice(0, 3)) {
+        const c = add(far, mul(norm(sub(cen, far)), rPond + 20))
+        const circle = turf.feature({ type: 'Polygon', coordinates: [[...Array(33)].map((_, i) => add(c, [rPond * Math.cos((i / 32) * 2 * Math.PI), rPond * Math.sin((i / 32) * 2 * Math.PI)]))] })
+        const f = clip(circle, U)
+        const sf = f ? areaFt(f.geometry) : 0
+        if (sf > pondSf) { pondSf = sf; pondF = f; pondC = c }
+      }
+    }
+
+    // room for a building: its rectangle plus clearance sits inside the site and off the pond
+    const inside = (x0, y0, x1, y1, m) => {
+      for (const p of [[x0 - m, y0 - m], [x1 + m, y0 - m], [x1 + m, y1 + m], [x0 - m, y1 + m], [(x0 + x1) / 2, y0 - m], [(x0 + x1) / 2, y1 + m]]) {
+        if (!turf.booleanPointInPolygon(p, U)) return false
+        if (pondC && len(sub(p, pondC)) < rPond + 12) return false
+      }
+      return true
+    }
+
+    const BD = A.bldgDepth
+    // parking court between building rows: one aisle for 2-story buildings, two for 3+ stories
+    // (walk 12 + [stalls 18 + aisle 24] x1-2 + stalls 18 + walk 12)
+    const COURT = A.stories >= 3 ? 126 : 84
+    const GAP = 30, perim = 35
+    const unitsFor = (L) => Math.floor((L * BD * A.stories * A.efficiency) / Math.max(400, A.unitSf))
+    const feats = [], labels = []
+    const bands = [] // building rows, with their court side
+    // repeating section: building, court, building, green break
+    const cycle = [['b', BD], ['c', COURT], ['b', BD], ['g', 40]]
+    let y = minY + perim, ci = 0
+    const rows = []
+    while (y + BD <= maxY - perim) {
+      const [kind, h] = cycle[ci % 4]
+      if (kind === 'b') rows.push({ y })
+      bands.push({ kind, y, h })
+      y += h; ci++
+    }
+    let unitsTotal = 0, buildings = 0, bldgMaxFt = 0, spaces = 0, roadLen = 0, bldgSf = 0
+    const rects = [] // everything paved or built, for the green-space remainder
+    const courts = bands.filter((b) => b.kind === 'c')
+    // buildings along each building band (units assigned after parking is known)
+    const specs = []
+    for (const row of rows) {
+      let x = minX + perim
+      while (x + 100 <= maxX - perim) {
+        const L = [A.maxBldgFt, 120, 100].find((l) => x + l <= maxX - perim && inside(x, row.y, x + l, row.y + BD, 15))
+        if (!L) { x += 10; continue }
+        specs.push({ x, y: row.y, L })
+        rects.push([x, row.y, x + L, row.y + BD])
+        buildings++; bldgMaxFt = Math.max(bldgMaxFt, L); bldgSf += L * BD
+        x += L + GAP
+      }
+    }
+    // parking courts between building rows: pave the court band across the buildings' extent
+    for (const c of courts) {
+      const nearby = rects.filter(([, y0, , y1]) => Math.abs(y1 - c.y) < 1 || Math.abs(y0 - (c.y + c.h)) < 1)
+      if (!nearby.length) continue
+      let x0 = Math.min(...nearby.map((r) => r[0])), x1 = Math.max(...nearby.map((r) => r[2]))
+      // keep the court inside the site (odd-shaped parcels)
+      while (x1 - x0 > 60 && !inside(x0, c.y, x1, c.y + c.h, 5)) { x0 += 15; x1 -= 15 }
+      if (x1 - x0 < 60) continue
+      feats.push(turf.feature(B({ type: 'Polygon', coordinates: [[[x0, c.y], [x1, c.y], [x1, c.y + c.h], [x0, c.y + c.h], [x0, c.y]]] }), { kind: 'parking', fill: '#31404B' }))
+      const aisles = A.stories >= 3 ? [30, 72] : [30]
+      for (const a of aisles) feats.push(turf.feature(B({ type: 'Polygon', coordinates: [[[x0, c.y + a], [x1, c.y + a], [x1, c.y + a + 24], [x0, c.y + a + 24], [x0, c.y + a]]] }), { kind: 'road', fill: '#1C2A33' }))
+      rects.push([x0, c.y, x1, c.y + c.h])
+      spaces += Math.floor(((x1 - x0) / 9) * 2 * aisles.length)
+      roadLen += (x1 - x0) * aisles.length
+    }
+    if (!buildings) return { error: 'No apartment buildings fit. The buildable area may be too narrow; try the townhome scenario instead.' }
+    // yield is capped by what the lots can park: scale units down to the surface spaces
+    const floorUnits = specs.reduce((t, sp) => t + unitsFor(sp.L), 0)
+    const cap = Math.floor(spaces / Math.max(1, A.parkRatio))
+    const scale = Math.min(1, cap / Math.max(1, floorUnits))
+    for (const sp of specs) {
+      const u = Math.max(1, Math.round(unitsFor(sp.L) * scale))
+      feats.push(turf.feature(B({ type: 'Polygon', coordinates: [[[sp.x, sp.y], [sp.x + sp.L, sp.y], [sp.x + sp.L, sp.y + BD], [sp.x, sp.y + BD], [sp.x, sp.y]]] }), { kind: 'building', units: u, fill: '#8A8378' }))
+      labels.push(turf.feature(B({ type: 'Point', coordinates: [sp.x + sp.L / 2, sp.y + BD / 2] }), { kind: 'area-label', label: `${u} units` }))
+      unitsTotal += u
+    }
+    // entrance drive: from the entry point to the farthest court aisle, crossing them all
+    const spineX = Math.max(minX + perim + 30, Math.min(maxX - perim - 30, entry[0]))
+    const aisleYs = courts.map((c) => c.y + 42).filter((yy) => rects.some(([, y0, , y1]) => y0 <= yy && yy <= y1))
+    if (aisleYs.length) {
+      const yTop = Math.max(...aisleYs, entry[1]), yBot = Math.min(...aisleYs, entry[1])
+      const spine = clip(turf.feature({ type: 'Polygon', coordinates: [[[spineX - 12, yBot], [spineX + 12, yBot], [spineX + 12, yTop], [spineX - 12, yTop], [spineX - 12, yBot]]] }), U)
+      if (spine) feats.push(turf.feature(B(spine.geometry), { kind: 'road', fill: '#1C2A33' }))
+      rects.push([spineX - 12, yBot, spineX + 12, yTop])
+      roadLen += yTop - yBot
+    }
+    // pond and green space
+    if (pondF && pondSf > 0) {
+      feats.push(turf.feature(B(pondF.geometry), { kind: 'pond' }))
+      labels.push(turf.feature(B({ type: 'Point', coordinates: pondC }), { kind: 'area-label', label: `Pond ${(pondSf / 43560).toFixed(2)} ac` }))
+    }
+    let green = pondF ? minus(U, pondF) : U
+    for (const [x0, y0, x1, y1] of rects) green = green && minus(green, turf.feature({ type: 'Polygon', coordinates: [[[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]]] }))
+    const greenSf = green ? areaFt(green.geometry) : 0
+    if (green) feats.push(turf.feature(B(green.geometry), { kind: 'green' }))
+    for (const f of feats) f.properties.fill = f.properties.fill || { pond: '#3A8DDE', green: '#38A169' }[f.properties.kind] || '#FFFFFF'
+
+    const pavedSf = rects.reduce((t, [x0, y0, x1, y1]) => t + (x1 - x0) * (y1 - y0), 0) // buildings + courts + drives
+    return {
+      lots: unitsTotal, counts: [], product: 'apartments',
+      buildings, bldgMaxFt, bldgUnits: [], stories: A.stories, spaces, spacesPerUnit: unitsTotal ? spaces / unitsTotal : 0, parkingLimited: scale < 0.95, parkRatio: A.parkRatio,
+      totalAc: grossSf / 43560, netBuildableAc: (grossSf - floodSf) / 43560, unbuildableAc: floodSf / 43560,
+      roadLenFt: Math.round(roadLen), roadAc: Math.max(0, pavedSf - bldgSf) / 43560,
+      conflicts: [], outside: false, noFrontage: 0,
+      pondAc: pondSf / 43560, parkAc: 0, greenAc: greenSf / 43560,
+      openPct: ((greenSf + pondSf) / grossSf) * 100,
+      density: unitsTotal / (grossSf / 43560),
+      minLotSf, check: {}, pass: bldgMaxFt <= A.maxBldgFt + 1,
+      capped: false, district: opts.code, variants: 1, spurs: 0, absorbedAc: 0,
+      network: null,
+      geojson: turf.featureCollection([...feats, ...labels]),
+    }
+  }
 
   /* ---------- one orientation: try 1 or 2 street counts, keep the better ---------- */
   function layoutAt(ang) {

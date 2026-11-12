@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import * as turf from '@turf/turf'
 import { neighborhoodKml, LOT_COLORS } from '../lib/neighborhood'
 import { nearbyStreets } from '../lib/charlotte'
-import { N1, CONSERVATION_DISTRICTS, CONSERVATION_MIN_ACRES, MIXED_INCOME_MIN_ACRES, HOUSING, LOT_HOUSING, unitsFor, housingAllowed, FRONT_SETBACK_ASSUMED, MIN_HOUSE_DEPTH, upzoneOptions, policyFit, TOWNHOME } from '../data/charlotteUdo'
+import { N1, CONSERVATION_DISTRICTS, CONSERVATION_MIN_ACRES, MIXED_INCOME_MIN_ACRES, HOUSING, LOT_HOUSING, unitsFor, housingAllowed, FRONT_SETBACK_ASSUMED, MIN_HOUSE_DEPTH, upzoneOptions, policyFit, TOWNHOME, APARTMENT } from '../data/charlotteUdo'
 import { usePlans, savePlan, getPlan, renamePlan, duplicatePlan, deletePlan } from '../lib/planStore'
 import { handlesFor, softDrag, pxToSegment, feetAlong, ringOf, polygonOf } from '../lib/editHandles'
 
@@ -53,6 +53,7 @@ export default function NeighborhoodCard({ parcel, parts, code: zonedCode, place
   const code = scenario || zonedCode
   const std = N1[code]
   const townhomes = !!std?.townhome // N2-A scenarios draft townhome buildings on sublots
+  const apartments = !!std?.apartment // N2-B scenarios draft garden apartments with surface parking
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState('standard')
   const [mix, setMix] = useState(() => defaultMix(std?.minWidthFt || 50))
@@ -79,7 +80,8 @@ export default function NeighborhoodCard({ parcel, parts, code: zonedCode, place
   live.current = { edit, removed, tool, drawPts, selected, plan, parcel }
   const nextId = useRef(1)
   const [housing, setHousing] = useState('sf')
-  const [thOpts, setThOpts] = useState({ unitW: TOWNHOME.unitW, maxPerBldg: TOWNHOME.maxPerBldg, style: 'front' }) // townhome scenarios // what the lots hold: single-family, duplex, triplex, a mix, or (not by right) townhomes/apartments
+  const [thOpts, setThOpts] = useState({ unitW: TOWNHOME.unitW, maxPerBldg: TOWNHOME.maxPerBldg, style: 'front' }) // townhome scenarios
+  const [aptOpts, setAptOpts] = useState({ stories: APARTMENT.stories, unitSf: APARTMENT.unitSf, parkRatio: APARTMENT.parkRatio }) // apartment scenarios // what the lots hold: single-family, duplex, triplex, a mix, or (not by right) townhomes/apartments
 
   // ---- saved plans ----
   const parcelId = parcel.properties.id
@@ -87,13 +89,13 @@ export default function NeighborhoodCard({ parcel, parts, code: zonedCode, place
   const [current, setCurrent] = useState(null) // { id, name, description, key } of the plan that's open
   const [form, setForm] = useState(null) // { as: 'new' | 'rename', id?, name, description }
   const [saveError, setSaveError] = useState(null)
-  const snapshot = () => ({ settings: { mode, mix, reserve, variant, housing, scenario, th: thOpts }, edit, removed })
+  const snapshot = () => ({ settings: { mode, mix, reserve, variant, housing, scenario, th: thOpts, apt: aptOpts }, edit, removed })
   // compare plans without remembered lot sizes, which fill in on their own after a refill
   const keyOf = (snap) => JSON.stringify(snap, (k, v) => (k === 'sideTypes' ? undefined : v))
   const dirty = current && keyOf(snapshot()) !== current.key
 
   const applyPlan = (p) => {
-    setMode(p.settings.mode); setMix(p.settings.mix); setReserve(p.settings.reserve); setVariant(p.settings.variant || 0); setHousing(p.settings.housing || 'sf'); setScenario(p.settings.scenario || null); if (p.settings.th) setThOpts(p.settings.th)
+    setMode(p.settings.mode); setMix(p.settings.mix); setReserve(p.settings.reserve); setVariant(p.settings.variant || 0); setHousing(p.settings.housing || 'sf'); setScenario(p.settings.scenario || null); if (p.settings.th) setThOpts(p.settings.th); if (p.settings.apt) setAptOpts(p.settings.apt)
     const e = p.edit ? { ...p.edit, streets: p.edit.streets.map((st) => ({ ...st, id: st.id ?? nextId.current++ })) } : null
     if (e) nextId.current = Math.max(nextId.current, ...e.streets.map((st) => (typeof st.id === 'number' ? st.id + 1 : 1)))
     setEdit(e); setRemoved(p.removed || []); setHistory([]); setSelected(null); setEditing(false); setOpen(true)
@@ -237,12 +239,13 @@ export default function NeighborhoodCard({ parcel, parts, code: zonedCode, place
           code, mode, reservePct: reserve, floodPolys, streets, variant, network, removed,
           mix: townhomes ? [{ width: thOpts.unitW, share: 100 }] : cleanMix.map((m) => ({ ...m, share: (m.share / total) * 100 })),
           ...(townhomes ? { product: 'townhomes', th: { unitW: thOpts.unitW, maxPerBldg: thOpts.maxPerBldg, style: thOpts.style } } : {}),
+          ...(apartments ? { product: 'apartments', apt: aptOpts } : {}),
         },
       })
     }, edit ? 150 : 300)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, mode, mix, reserve, variant, floodPolys, streets, parcel, code, minWidth, edit, removed, retry, thOpts])
+  }, [open, mode, mix, reserve, variant, floodPolys, streets, parcel, code, minWidth, edit, removed, retry, thOpts, aptOpts])
 
   // ---- by-right baseline while a rezoning scenario is shown ----
   const [baseline, setBaseline] = useState(null) // { lots } for the parcel as zoned
@@ -265,7 +268,8 @@ export default function NeighborhoodCard({ parcel, parts, code: zonedCode, place
     const nextCode = next || zonedCode
     setScenario(next || null)
     if (N1[nextCode].townhome) { setHousing('townhomes'); setMix([{ width: TOWNHOME.unitW, share: 100 }]) }
-    else { if (housing === 'townhomes') setHousing('sf'); setMix(defaultMix(N1[nextCode].minWidthFt)) }
+    else if (N1[nextCode].apartment) { setHousing('apartments'); setMix([{ width: TOWNHOME.unitW, share: 100 }]) }
+    else { if (housing === 'townhomes' || housing === 'apartments') setHousing('sf'); setMix(defaultMix(N1[nextCode].minWidthFt)) }
     setEdit((cur) => (cur ? { ...cur, streets: cur.streets.map(({ sideTypes, sideCuts, ...st }) => st) } : cur))
     if (mode === 'conservation' && !CONSERVATION_DISTRICTS.includes(nextCode)) setMode('standard')
     if (mode === 'bonus' && !N1[nextCode].bonusTo) setMode('standard')
@@ -577,18 +581,23 @@ export default function NeighborhoodCard({ parcel, parts, code: zonedCode, place
   const rules = N1[ruleCode] || std
   const allowed = housingAllowed(housing, ruleCode)
   const unitsOf = (c) => (housing === 'mix' ? unitsFor(mix[c.i]?.home || 'sf') : LOT_HOUSING.some((h) => h.key === housing) ? unitsFor(housing) : 1)
-  const homes = plan && !plan.error ? plan.counts.reduce((t, c) => t + c.lots * unitsOf(c), 0) : 0
+  const homes = plan && !plan.error ? (plan.counts.length ? plan.counts.reduce((t, c) => t + c.lots * unitsOf(c), 0) : plan.lots) : 0
   const needDepth = FRONT_SETBACK_ASSUMED + (rules?.rearFt || 0) + MIN_HOUSE_DEPTH
   const ck = plan?.check || {}
   const lotWord = plan?.product === 'townhomes' ? 'sublot' : 'lot'
-  const checks = plan && !plan.error ? [
+  const checks = plan && !plan.error ? (plan.product === 'apartments' ? [
+    { label: 'Housing type', ok: allowed.ok, detail: allowed.ok === true ? `Apartments are allowed by right in ${ruleCode}` : allowed.note },
+    { label: 'Building scale', ok: plan.bldgMaxFt <= APARTMENT.maxBldgFt + 1 && aptOpts.stories <= 4, detail: `${plan.buildings} buildings, up to ${plan.bldgMaxFt} ft long and ${plan.stories} stories, within the ${N1[ruleCode].heightFt} ft height limit` },
+    { label: 'Parking', ok: true, detail: `${fmt(plan.spaces)} surface spaces, ${plan.spacesPerUnit.toFixed(1)} per unit${plan.parkingLimited ? '. Parking is what limits the unit count on this site' : ''} (a market assumption, not a UDO minimum)` },
+    { label: 'Open space', ok: plan.openPct >= 15, detail: `${fmt(plan.openPct, 1)}% of the site stays open (green space and the pond)` },
+  ] : [
     { label: plan.product === 'townhomes' ? 'Sublot area' : 'Lot area', ok: plan.pass, detail: `Smallest ${lotWord} ${fmt(ck.minSf)} sq ft; Groundwork drafts ${ruleCode} with ${fmt(plan.minLotSf)} sq ft minimum ${lotWord}s${plan.capped ? '. At the conservation maximum lot count' : ''}` },
     ...(plan.product === 'townhomes' ? [{ label: 'Building size', ok: plan.bldgMaxFt <= TOWNHOME.maxBldgFt && Math.max(...plan.bldgUnits) <= thOpts.maxPerBldg, detail: `${plan.buildings} buildings, up to ${Math.max(...plan.bldgUnits)} units each; longest ${plan.bldgMaxFt} ft. Recent N2-A approvals typically condition buildings to about ${TOWNHOME.maxBldgFt} ft and 4-6 units.` }] : []),
     { label: 'Lot width', ok: ck.minWidth == null || ck.minWidth >= minWidth - 0.5, detail: ck.minWidth ? `Narrowest street frontage ${ck.minWidth} ft; needs ${minWidth} ft (cul-de-sac lots are measured at the setback)` : 'Measured on the lot mix' },
     { label: 'Street access', ok: true, detail: plan.noFrontage ? `Every ${lotWord} fronts a street (${plan.noFrontage} without frontage were left out)` : `Every ${lotWord} fronts a street with room for a driveway` },
     { label: plan?.product === 'townhomes' ? 'Room for a unit' : 'Room for a house', ok: ck.minDepth == null || ck.minDepth >= needDepth, detail: `Shallowest ${lotWord} ${ck.minDepth ?? '—'} ft deep; a ${plan?.product === 'townhomes' ? 'unit' : 'house'} needs ${needDepth} ft for a ${FRONT_SETBACK_ASSUMED} ft front setback (assumed), the ${rules?.rearFt} ft rear setback, and a ${MIN_HOUSE_DEPTH} ft deep home` },
     { label: 'Housing type', ok: allowed.ok, detail: allowed.ok === true ? `${HOUSING.find((h) => h.key === housing).label} ${housing === 'mix' ? 'types are' : 'is'} allowed by right in ${ruleCode}` : allowed.ok === 'limited' ? `Allowed in ${ruleCode} only on a small scale` : `Not allowed by right in ${ruleCode}` },
-  ] : []
+  ]) : []
   const passAll = !!plan && !plan.error && checks.every((c) => c.ok === true) && !plan.conflicts?.length
   const download = () => {
     const blob = new Blob([neighborhoodKml(plan, `Groundwork draft · ${parcel.properties.address || parcel.properties.id}`)], { type: 'application/vnd.google-earth.kml+xml' })
@@ -622,6 +631,7 @@ export default function NeighborhoodCard({ parcel, parts, code: zonedCode, place
             <option value="">As zoned ({zonedCode})</option>
             {upzoneOptions(zonedCode).filter((c) => !N1[c].townhome).map((c) => <option key={c} value={c}>If rezoned to {c} ({N1[c].minLotSf.toLocaleString()} sq ft lots)</option>)}
             <option value="N2-A">If rezoned to N2-A (townhomes)</option>
+            <option value="N2-B">If rezoned to N2-B (apartments)</option>
           </select>
         </label>
       )}
@@ -684,18 +694,19 @@ export default function NeighborhoodCard({ parcel, parts, code: zonedCode, place
         <>
           {/* results first */}
           <div className="nb-total">
-            <span className="nb-lots">{plan.lots}</span><span className="nb-unit">{plan.product === 'townhomes' ? 'townhomes' : 'lots'}</span>
+            <span className="nb-lots">{plan.product === 'apartments' ? '≈' : ''}{plan.lots}</span><span className="nb-unit">{plan.product === 'townhomes' ? 'townhomes' : plan.product === 'apartments' ? 'apartments' : 'lots'}</span>
             {homes !== plan.lots && <span className="nb-homes">· {homes} homes</span>}
             <span className={`pass ${passAll ? 'yes' : 'no'}`}>{passAll ? 'PASS' : 'CHECK'}</span>
           </div>
           {scenario && (
             <p className="scenario-compare">
               {baseline?.lots != null
-                ? <>By right as {zonedCode}: <strong>{baseline.lots} lots</strong> · as {scenario}: <strong>{plan.lots} {plan.product === 'townhomes' ? 'townhomes' : 'lots'}</strong> <span className={plan.lots - baseline.lots >= 0 ? 'up' : 'down'}>({plan.lots - baseline.lots >= 0 ? '+' : ''}{plan.lots - baseline.lots})</span></>
+                ? <>By right as {zonedCode}: <strong>{baseline.lots} lots</strong> · as {scenario}: <strong>{plan.product === 'apartments' ? '≈' : ''}{plan.lots} {plan.product === 'townhomes' ? 'townhomes' : plan.product === 'apartments' ? 'apartments' : 'lots'}</strong> <span className={plan.lots - baseline.lots >= 0 ? 'up' : 'down'}>({plan.lots - baseline.lots >= 0 ? '+' : ''}{plan.lots - baseline.lots})</span></>
                 : baseline?.error ? 'The by-right comparison couldn’t be drafted.' : `Drafting the by-right ${zonedCode} comparison…`}
             </p>
           )}
           {plan.product === 'townhomes' && <p className="nb-density">{plan.buildings} buildings of up to {Math.max(...plan.bldgUnits)} units · longest {plan.bldgMaxFt} ft · {plan.thStyle === 'alley' ? 'rear alley-loaded' : 'front-loaded garages'}</p>}
+          {plan.product === 'apartments' && <p className="nb-density">{plan.buildings} buildings · {plan.stories} stories · {fmt(plan.spaces)} surface spaces ({plan.spacesPerUnit.toFixed(1)} per unit){plan.parkingLimited ? ' · yield is parking-limited' : ''}</p>}
           <p className="nb-density">{fmt(plan.density, 2)} {plan.product === 'townhomes' ? 'homes' : 'lots'} per acre{homes !== plan.lots ? ` · ${fmt(homes / plan.totalAc, 1)} homes per acre` : ''}{plan.capped ? ' · at the conservation maximum' : ''}</p>
           {allowed.ok !== true && (
             <div className={`note ${allowed.ok === false ? 'warn' : ''}`}>
@@ -736,7 +747,7 @@ export default function NeighborhoodCard({ parcel, parts, code: zonedCode, place
             {[
               ['Total area', `${fmt(plan.totalAc, 2)} ac`],
               ['Net buildable', `${fmt(plan.netBuildableAc, 2)} ac`],
-              ['Roads', `${fmt(plan.roadLenFt)} ft · ${fmt(plan.roadAc, 1)} ac`],
+              [plan.product === 'apartments' ? 'Drives & parking' : 'Roads', plan.product === 'apartments' ? `${fmt(plan.roadAc, 1)} ac · ${fmt(plan.spaces)} spaces` : `${fmt(plan.roadLenFt)} ft · ${fmt(plan.roadAc, 1)} ac`],
               ['Open space', `${fmt(plan.openPct, 1)}%`],
               [`Pond${edit?.ponds?.length > 1 ? 's' : ''}`, `${fmt(plan.pondAc, 2)} ac`],
               ['Green space', `${fmt(plan.greenAc, 2)} ac`],
@@ -764,7 +775,7 @@ export default function NeighborhoodCard({ parcel, parts, code: zonedCode, place
             {!current && <button className="btn btn-primary" onClick={() => setForm({ as: 'new', name: '', description: '' })}>Save plan</button>}
             {current && dirty && <button className="btn btn-primary" onClick={quickSave}>Save</button>}
             {current && <button className="btn" onClick={() => setForm({ as: 'new', name: `${current.name} (copy)`, description: current.description || '' })}>Save as new</button>}
-            {!editing && <button className="btn" onClick={startEditing}>{edit ? 'Keep editing' : 'Edit layout'}</button>}
+            {!editing && plan.product !== 'apartments' && <button className="btn" onClick={startEditing}>{edit ? 'Keep editing' : 'Edit layout'}</button>}
             {!edit && plan.variants > 1 && <button className="btn" onClick={() => setVariant((v) => (v + 1) % plan.variants)}>Try another layout ({variant + 1} of {plan.variants})</button>}
             {edit && <button className="btn" onClick={() => { setEditing(false); setEdit(null); setRemoved([]); setHistory([]); setSelected(null) }}>Back to automatic draft</button>}
             <button className="btn" onClick={download}>Export KML</button>
@@ -780,12 +791,28 @@ export default function NeighborhoodCard({ parcel, parts, code: zonedCode, place
             {modes.map((m) => <button key={m.id} className={mode === m.id ? 'on' : ''} onClick={() => setMode(m.id)} aria-pressed={mode === m.id}>{m.label}</button>)}
           </div>
         )}
-        {!townhomes && <label className="housing-pick">
+        {!townhomes && !apartments && <label className="housing-pick">
           <span>Housing type</span>
           <select value={housing} onChange={(e) => setHousing(e.target.value)}>
             {HOUSING.map((h) => <option key={h.key} value={h.key}>{h.label}{housingAllowed(h.key, code).ok === false ? ' (needs rezoning)' : ''}</option>)}
           </select>
         </label>}
+        {apartments && (
+          <div className="th-controls">
+            <label><span>Stories</span>
+              <input type="number" min={2} max={4} step={1} value={aptOpts.stories} onChange={(e) => setAptOpts((o) => ({ ...o, stories: Math.max(2, Math.min(4, Number(e.target.value) || APARTMENT.stories)) }))} />
+              <span className="unit">fl</span>
+            </label>
+            <label><span>Average unit</span>
+              <input type="number" min={600} max={1500} step={50} value={aptOpts.unitSf} onChange={(e) => setAptOpts((o) => ({ ...o, unitSf: Math.max(600, Math.min(1500, Number(e.target.value) || APARTMENT.unitSf)) }))} />
+              <span className="unit">sq ft</span>
+            </label>
+            <label><span>Parking per unit</span>
+              <input type="number" min={1} max={2} step={0.1} value={aptOpts.parkRatio} onChange={(e) => setAptOpts((o) => ({ ...o, parkRatio: Math.max(1, Math.min(2, Number(e.target.value) || APARTMENT.parkRatio)) }))} />
+              <span className="unit">sp</span>
+            </label>
+          </div>
+        )}
         {townhomes && (
           <div className="th-controls">
             <label><span>Garages</span>
@@ -803,7 +830,7 @@ export default function NeighborhoodCard({ parcel, parts, code: zonedCode, place
             </label>
           </div>
         )}
-        {!townhomes && <div className="mix-editor">
+        {!townhomes && !apartments && <div className="mix-editor">
           <div className="mix-head"><span>Lot mix (frontage width)</span><span>Share</span></div>
           {mix.map((m, i) => (
             <div key={i} className="mix-row">
