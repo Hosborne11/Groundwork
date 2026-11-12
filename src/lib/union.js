@@ -46,5 +46,14 @@ export async function unionZoning(parcel) {
   const a = z?.features?.[0]?.attributes
   const code = clean(a?.[field])
   if (code && code.toUpperCase() !== 'CITY') return { town: town || 'Unincorporated Union County', code, source: 'Union County', petition: clean(a.PETITION) || null }
+
+  // Outside town limits but zoned by a town (extraterritorial jurisdiction): check every town layer.
+  const hits = await Promise.all(Object.entries(TOWNS).filter(([t]) => t !== town).map(async ([t, [lid, f]]) => {
+    const r = await getJSON(`${LAYERS}/${lid}/query`, atPoint(parcel, f)).catch(() => null)
+    const c = clean(r?.features?.[0]?.attributes?.[f])
+    return c ? { town: t, code: c } : null
+  }))
+  const etj = hits.find(Boolean)
+  if (etj) return { town: etj.town, code: etj.code, source: `Town of ${etj.town}`, etj: true }
   return { town: town || 'Union County', code: null, source: null }
 }

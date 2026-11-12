@@ -45,14 +45,23 @@ export async function concordApprovalContext(parcel, code) {
     tigerStreets(parcel, 600),
     getJSON(`${CONCORD_ZONING}/query`, { geometry: padded(parcel, 100), geometryType: 'esriGeometryEnvelope', inSR: 4326, spatialRel: 'esriSpatialRelIntersects', outFields: 'ZONINGCODE', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0001, f: 'json' }),
   ])
-  const precedents = (ok(near)?.features || []).filter((f) => f.geometry?.rings?.length).map((f) => {
+  // one row per case: the map can split a case into several pieces; unnumbered slivers are dropped
+  const byCase = new Map()
+  for (const f of (ok(near)?.features || []).filter((x) => x.geometry?.rings?.length)) {
     const a = f.attributes
     const shape = turf.polygon(f.geometry.rings)
     const caseNo = String(a.CASE_ || '').trim()
+    const acres = a.acres || turf.area(shape) / 4046.86
+    const key = caseNo || `piece-${byCase.size}`
+    const cur = byCase.get(key)
+    if (cur) { cur.acres += acres; cur.pieces.push(shape); continue }
+    byCase.set(key, { caseNo, code: a.ZONINGCODE, from: String(a.OLDZONING || '').trim() || null, acres, pieces: [shape] })
+  }
+  const precedents = [...byCase.values()].filter((x) => x.caseNo || x.acres >= 0.5).map((x) => {
+    const shape = x.pieces.length === 1 ? x.pieces[0] : turf.convex(turf.featureCollection(x.pieces)) || x.pieces[0]
     return {
-      petition: caseNo || 'Case not listed', requested: a.ZONINGCODE, status: 'Approved', decided: null, year: yearOf(caseNo),
-      acres: a.acres || turf.area(shape) / 4046.86, lots: null, from: String(a.OLDZONING || '').trim() || null,
-      miles: turf.distance(c, turf.pointOnFeature(shape), { units: 'miles' }), shape,
+      petition: x.caseNo || 'Case not listed', requested: x.code, status: 'Approved', decided: null, year: yearOf(x.caseNo),
+      acres: x.acres, lots: null, from: x.from, miles: turf.distance(c, turf.pointOnFeature(shape), { units: 'miles' }), shape,
     }
   }).filter((p) => !turf.booleanPointInPolygon(turf.point(c), p.shape)).sort((a, b) => a.miles - b.miles)
   const { frontage, nearestRoad } = frontageFrom(parcel, ok(roads) || [])

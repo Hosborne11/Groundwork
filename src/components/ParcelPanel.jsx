@@ -87,7 +87,7 @@ const charlotteUtility = (kind) => async (parcel) => {
 async function unionZoningCheck(parcel) {
   const z = await unionZoning(parcel)
   if (!z.code) return { tone: 'none', value: z.town, detail: `${z.town} zoning isn't published in the county's map; check with the town.` }
-  return { tone: 'none', value: z.code, town: z.town, code: z.code, detail: [`${z.source} zoning`, z.source === 'Union County' && z.town, z.petition && `rezoning petition ${z.petition}`].filter(Boolean).join(' · ') }
+  return { tone: 'none', value: z.code, town: z.town, code: z.code, detail: [`${z.source} zoning`, z.etj && 'outside town limits (extraterritorial jurisdiction)', z.source === 'Union County' && z.town, z.petition && `rezoning petition ${z.petition}`].filter(Boolean).join(' · ') }
 }
 
 async function yorkZoningCheck(parcel) {
