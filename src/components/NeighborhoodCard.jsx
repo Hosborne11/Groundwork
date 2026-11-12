@@ -48,7 +48,7 @@ const defaultMix = (w) => [{ width: w, share: 50 }, { width: w + 20, share: 30 }
  * Automatic neighborhood draft for a Charlotte N1 parcel. Draws on the map through onPlan.
  * floodPolys: floodplain shapes (null while the flood check runs).
  */
-export default function NeighborhoodCard({ parcel, parts, code: zonedCode, placeType, acres, floodPolys, floodFailed, onPlan, editor, openPlanId, onPlanOpened }) {
+export default function NeighborhoodCard({ parcel, parts, code: zonedCode, placeType, acres, floodPolys, floodFailed, onPlan, editor, openPlanId, onPlanOpened, onSummary }) {
   // A rezoning scenario drafts under another district's rules; everything below uses the effective district.
   const [scenario, setScenario] = useState(null)
   const code = scenario || zonedCode
@@ -250,6 +250,7 @@ export default function NeighborhoodCard({ parcel, parts, code: zonedCode, place
 
   // ---- by-right baseline while a rezoning scenario is shown ----
   const [baseline, setBaseline] = useState(null) // { lots } for the parcel as zoned
+  const [approval, setApproval] = useState(null) // approval-context factors, for the site report
   const baseWorker = useRef(null)
   useEffect(() => {
     if (!scenario || !open || floodPolys === null || streets === null) { setBaseline(null); return }
@@ -547,17 +548,6 @@ export default function NeighborhoodCard({ parcel, parts, code: zonedCode, place
     editor.setOverlay({ streets: streetsFc, draw: turf.featureCollection(draw) })
   }, [editing, editor, edit, selected, drawPts, cursor, tool, plan, dragGeom, dragShape, lotDrag, parcel]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!std) return null
-  if (!open) {
-    return (
-      <>
-        {savedList}
-        {form?.as === 'rename' && saveForm}
-        <button className="btn btn-primary sketch-btn" onClick={() => { setCurrent(null); setOpen(true) }}>Draft a neighborhood</button>
-      </>
-    )
-  }
-
   const setMixRow = (i, k, v) => setMix((m) => m.map((row, j) => (j === i ? { ...row, [k]: v } : row)))
 
   // live measurement while drawing: street length, or a pond/park's outline area
@@ -597,9 +587,43 @@ export default function NeighborhoodCard({ parcel, parts, code: zonedCode, place
     { label: 'Lot width', ok: ck.minWidth == null || ck.minWidth >= minWidth - 0.5, detail: ck.minWidth ? `Narrowest street frontage ${ck.minWidth} ft; needs ${minWidth} ft (cul-de-sac lots are measured at the setback)` : 'Measured on the lot mix' },
     { label: 'Street access', ok: true, detail: plan.noFrontage ? `Every ${lotWord} fronts a street (${plan.noFrontage} without frontage were left out)` : `Every ${lotWord} fronts a street with room for a driveway` },
     { label: plan?.product === 'townhomes' ? 'Room for a unit' : 'Room for a house', ok: ck.minDepth == null || ck.minDepth >= needDepth, detail: `Shallowest ${lotWord} ${ck.minDepth ?? '—'} ft deep; a ${plan?.product === 'townhomes' ? 'unit' : 'house'} needs ${needDepth} ft for a ${FRONT_SETBACK_ASSUMED} ft front setback (assumed), the ${rules?.rearFt} ft rear setback, and a ${MIN_HOUSE_DEPTH} ft deep home` },
-    { label: 'Housing type', ok: allowed.ok, detail: allowed.ok === true ? `${HOUSING.find((h) => h.key === housing).label} ${housing === 'mix' ? 'types are' : 'is'} allowed by right in ${ruleCode}` : allowed.ok === 'limited' ? `Allowed in ${ruleCode} only on a small scale` : `Not allowed by right in ${ruleCode}` },
+    { label: 'Housing type', ok: allowed.ok, detail: allowed.ok === true ? `${HOUSING.find((h) => h.key === housing).label} ${housing === 'mix' ? 'types are' : /s$/.test(HOUSING.find((h) => h.key === housing).label) ? 'are' : 'is'} allowed by right in ${ruleCode}` : allowed.ok === 'limited' ? `Allowed in ${ruleCode} only on a small scale` : `Not allowed by right in ${ruleCode}` },
   ]) : []
   const passAll = !!plan && !plan.error && checks.every((c) => c.ok === true) && !plan.conflicts?.length
+
+  // ---- summary of the current draft, for the site report ----
+  const summary = open && plan && !plan.error ? {
+    planName: current?.name || null,
+    zoned: zonedCode, scenario, district: ruleCode,
+    product: plan.product || 'lots',
+    count: plan.lots, homes, density: plan.density,
+    unitWord: plan.product === 'townhomes' ? 'townhomes' : plan.product === 'apartments' ? 'apartments' : 'lots',
+    baseline: scenario ? baseline?.lots ?? null : null,
+    housing: plan.product ? null : HOUSING.find((h) => h.key === housing)?.label,
+    pass: passAll,
+    checks: checks.map((c) => ({ label: c.label, ok: c.ok, detail: c.detail })),
+    facts: {
+      totalAc: plan.totalAc, roadLenFt: plan.roadLenFt, roadAc: plan.roadAc, openPct: plan.openPct, pondAc: plan.pondAc, greenAc: plan.greenAc,
+      buildings: plan.buildings, bldgMaxFt: plan.bldgMaxFt, spaces: plan.spaces, stories: plan.stories,
+      mix: plan.counts?.filter((c) => c.lots).map((c) => `${c.width} × ${c.depth} ft: ${c.lots}`),
+    },
+    approval: scenario ? approval : null,
+  } : null
+  const summaryKey = JSON.stringify(summary)
+  useEffect(() => { onSummary?.(summary) }, [summaryKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // early returns only after every hook, so the hook count never changes between renders
+  if (!open) {
+    return (
+      <>
+        {savedList}
+        {form?.as === 'rename' && saveForm}
+        <button className="btn btn-primary sketch-btn" onClick={() => { setCurrent(null); setOpen(true) }}>Draft a neighborhood</button>
+      </>
+    )
+  }
+
+  if (!std) return null // all hooks above run on every render
   const download = () => {
     const blob = new Blob([neighborhoodKml(plan, `Groundwork draft · ${parcel.properties.address || parcel.properties.id}`)], { type: 'application/vnd.google-earth.kml+xml' })
     const url = URL.createObjectURL(blob)
@@ -642,7 +666,7 @@ export default function NeighborhoodCard({ parcel, parts, code: zonedCode, place
           <span>Drafted under {scenario} rules. Building this way needs a rezoning approved by City Council.</span>
         </div>
       )}
-      {scenario && !parts && <ApprovalContext parcel={parcel} code={scenario} placeType={placeType} editor={editor} />}
+      {scenario && !parts && <ApprovalContext parcel={parcel} code={scenario} placeType={placeType} editor={editor} onFactors={setApproval} />}
       {form && saveForm}
       {!editing && !form && savedList}
 

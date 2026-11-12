@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { openReportWindow, writeSiteReport } from '../lib/siteReport'
 import * as turf from '@turf/turf'
 import { nearestSewer, nearestWater, floodShare, soilsFor, zoningAt } from '../lib/gis'
 import { charlotteZoning, placeType } from '../lib/charlotte'
@@ -177,6 +178,8 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
   const place = useValue(placeType, parcel, isMeck)
   const deed = useValue(deedGroup, parcel)
   const [copied, setCopied] = useState(false)
+  const [draftSummary, setDraftSummary] = useState(null) // the open neighborhood draft, for the site report
+  const [reporting, setReporting] = useState(false)
 
   const floodPct = flood.status === 'done' ? flood.pct : null
   // null while the flood check runs; [] if it failed (sketch then ignores floodplain)
@@ -200,6 +203,25 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
     try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1800) } catch { /* clipboard blocked */ }
   }
 
+  // one-page printable report of this parcel and its current draft
+  const siteReport = async () => {
+    const w = openReportWindow() // must open inside the click
+    if (!w) { alert('Allow pop-ups for Groundwork to open the site report.'); return }
+    setReporting(true)
+    const item = (label, c) => (c && c.status === 'done' ? { label, value: c.value, detail: c.detail } : null)
+    const zoningCheck = !isMeck && (cabZoning.status === 'done' ? cabZoning : uZoning.status === 'done' ? uZoning : yZoning.status === 'done' ? yZoning : null)
+    const snapshot = await editor?.snapshot?.(parcel)
+    writeSiteReport(w, {
+      address: p.address, owner: p.owner, mail: p.mail, county: p.county, id: p.id, acres: p.acres, vacant: p.vacant, landUse: p.landUse,
+      assessed: money(p.assessed), sale: `${sale}${deed ? ` (deed covers ${deed.count} parcels)` : ''}`,
+      zoning: isMeck ? cltZoning?.code : zoningCheck?.value, place: isMeck && place ? `${place.name}${place.area ? ` · ${place.area}` : ''}` : null,
+      checks: [item('Floodplain', flood), item('Soils', soils), item('Sewer', sewer), item('Water', water), item('Utilities', yUtility), item('Land use plan', yLandUse)].filter(Boolean),
+      summary: isMeck ? draftSummary : null,
+      snapshot,
+    })
+    setReporting(false)
+  }
+
   return (
     <aside className="panel" aria-label="Parcel details">
       <div className="panel-head">
@@ -215,6 +237,7 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
           <button className={`btn ${isSaved ? 'btn-on' : 'btn-primary'}`} onClick={onSave}>{isSaved ? 'Saved' : 'Save parcel'}</button>
           {onAssemble && <button className={`btn ${inAssembly ? 'on' : ''}`} onClick={onAssemble} title="Combine with other parcels for one site plan (or Shift-click parcels on the map)">{inAssembly ? 'Remove from site' : 'Add to site'}</button>}
           <button className="btn" onClick={copySummary}>{copied ? 'Copied' : 'Copy summary'}</button>
+          <button className="btn" onClick={siteReport} disabled={reporting} title="A one-page report you can print or save as a PDF">{reporting ? 'Preparing…' : 'Site report'}</button>
         </div>
       </div>
 
@@ -223,7 +246,7 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
           <h3>What you can build</h3>
           {place && <p className="place">2040 Policy Map: <strong>{place.name}</strong>{place.area ? ` · ${place.area}` : ''}</p>}
           <BuildSection zoning={cltZoning} acres={p.acres} floodPct={floodPct} />
-          {canSketch && <NeighborhoodCard parcel={parcel} code={zoneParts.base} placeType={place?.name} acres={p.acres} floodPolys={floodPolys} floodFailed={flood.status === 'error'} onPlan={onPlan} editor={editor} openPlanId={openPlanId} onPlanOpened={onPlanOpened} />}
+          {canSketch && <NeighborhoodCard parcel={parcel} code={zoneParts.base} placeType={place?.name} acres={p.acres} floodPolys={floodPolys} floodFailed={flood.status === 'error'} onPlan={onPlan} editor={editor} openPlanId={openPlanId} onPlanOpened={onPlanOpened} onSummary={setDraftSummary} />}
         </section>
       )}
 

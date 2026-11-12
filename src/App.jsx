@@ -385,6 +385,22 @@ export default function App() {
     setCursor: (c) => { if (map.current) map.current.getCanvas().style.cursor = c },
     // screen position of a map point, for grabbing handles and lot lines
     project: (ll) => map.current?.project(ll),
+    // picture of the map framed on `feature` (for the site report); restores the view afterward
+    snapshot: (feature) => new Promise((resolve) => {
+      const m = map.current; if (!m) return resolve(null)
+      const before = { center: m.getCenter(), zoom: m.getZoom(), bearing: m.getBearing(), pitch: m.getPitch() }
+      const done = (url) => { m.jumpTo(before); resolve(url) }
+      const timer = setTimeout(() => done(null), 12000) // tiles never settled
+      m.fitBounds(turf.bbox(feature), { padding: 60, maxZoom: 17.5, duration: 0 })
+      m.once('idle', () => {
+        // capture inside a render, while the drawing buffer still holds the frame
+        m.once('render', () => {
+          clearTimeout(timer)
+          try { done(m.getCanvas().toDataURL('image/jpeg', 0.85)) } catch { done(null) } // imagery without CORS would taint the canvas
+        })
+        m.triggerRepaint()
+      })
+    }),
     // outline rezoning precedents (or clear them with null); fit the view to include `focus`
     showPrecedents: (fc, focus) => {
       const m = map.current; if (!m) return

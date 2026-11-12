@@ -11,7 +11,7 @@ const titleCase = (t) => t.toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCas
  * Factors staff and City Council weigh on a rezoning, shown for the scenario district.
  * Deliberately a list of factors, not a prediction.
  */
-export default function ApprovalContext({ parcel, code, placeType, editor }) {
+export default function ApprovalContext({ parcel, code, placeType, editor, onFactors }) {
   const [ctx, setCtx] = useState(null)
   const [state, setState] = useState('loading')
   const [active, setActive] = useState(null)
@@ -43,47 +43,66 @@ export default function ApprovalContext({ parcel, code, placeType, editor }) {
     editor?.showPrecedents?.(turf.featureCollection(shapes), turf.featureCollection([p.shape, parcel]))
   }
 
+  const view = ctx && state === 'done' ? (() => {
+
+    const within2 = ctx.precedents.filter((p) => p.miles != null && p.miles <= 2)
+    const tally = (list) => {
+      const t = {}
+      for (const p of list) t[p.status] = (t[p.status] || 0) + 1
+      return Object.entries(t).map(([k, n]) => `${n} ${k.toLowerCase()}`).join(', ')
+    }
+    const city = ctx.cityCounts
+    const cityTotal = Object.values(city).reduce((a, b) => a + b, 0)
+    const isN2 = code.startsWith('N2')
+    const factors = [
+      { tone: fit.fit === 'consistent' ? 'good' : fit.fit === 'inconsistent' ? 'warn' : 'neutral', title: '2040 Policy Map', text: fit.note },
+      {
+        tone: ctx.precedents.some((p) => p.status === 'Approved') ? 'good' : 'neutral',
+        title: 'Nearby precedents',
+        text: ctx.precedents.length
+          ? `${plural(ctx.precedents.length, 'rezoning')} to ${code} within 5 miles since the UDO took effect in June 2023 (${tally(ctx.precedents)}); ${within2.length ? `${within2.length} of them within 2 miles` : 'none within 2 miles'}.`
+          : `No rezonings to ${code} within 5 miles since the UDO took effect in June 2023. This would be a first for the area, which cuts both ways: no precedent to point to, but no history of neighbors fighting one either.`,
+      },
+      ...(cityTotal ? [{
+        tone: 'neutral', title: 'Citywide record',
+        text: `Charlotte has decided ${plural(cityTotal, `${code} request`)} since the UDO: ${Object.entries(city).map(([k, n]) => `${n} ${k.toLowerCase()}`).join(', ')}. Requests losing support are usually withdrawn before a vote rather than denied.`,
+      }] : []),
+      ...(ctx.pending.length ? [{ tone: 'neutral', title: 'In process nearby', text: `${plural(ctx.pending.length, 'petition')} for ${code} currently in process within 5 miles.` }] : []),
+      {
+        tone: ctx.frontage?.arterial ? 'good' : isN2 ? 'warn' : 'neutral',
+        title: 'Street frontage',
+        text: ctx.frontage
+          ? `Fronts ${ctx.frontage.name ? titleCase(ctx.frontage.name) : 'a street'} (${ctx.frontage.kind}).${isN2 ? (ctx.frontage.arterial ? ' Neighborhood 2 districts are usually expected along thoroughfares like this.' : ' Neighborhood 2 districts are usually expected along thoroughfares, not local streets.') : code === 'N1-F' ? (ctx.frontage.arterial ? ' N1-F is usually applied along streets like this.' : ' N1-F is usually applied along arterial streets.') : ''}`
+          : 'No street frontage found in the city street data.',
+      },
+      {
+        tone: ctx.intenseNeighbors.length ? 'good' : isN2 ? 'warn' : 'neutral',
+        title: 'Adjoining zoning',
+        text: ctx.neighbors.length
+          ? `${ctx.neighbors.join(', ')}.${ctx.intenseNeighbors.length ? ` Next to ${ctx.intenseNeighbors.join(', ')}, so ${code} would be a transition rather than a jump.` : isN2 ? ` Surrounded by Neighborhood 1 zoning, so ${code} would be a step up from everything around it.` : ''}`
+          : 'Adjoining zoning couldn’t be determined.',
+      },
+    ]
+    return { within2, factors }
+  })() : null
+  const factors = view?.factors || []
+  const within2 = view?.within2 || []
+
+  // hand the factors up (for the site report); a stable key avoids loops
+  const factorsKey = JSON.stringify(factors.map((f) => [f.tone, f.title, f.text]))
+  useEffect(() => {
+    if (!view) return
+    onFactors?.({
+      factors: factors.map(({ tone, title, text }) => ({ tone, title, text })),
+      cases: [...ctx.precedents.slice(0, 5), ...ctx.pending.slice(0, 3).map((p) => ({ ...p, status: 'In process' }))].map((p) => ({
+        petition: p.petition, requested: p.requested, status: p.status, decided: p.decided ? monthYear(p.decided) : null,
+        miles: p.miles, acres: p.acres, from: p.from,
+      })),
+    })
+  }, [factorsKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
   if (state === 'loading') return <section className="approval"><h4>Approval context</h4><p className="muted-small">Looking up rezonings near this parcel…</p></section>
   if (state === 'error' || !ctx) return <section className="approval"><h4>Approval context</h4><p className="muted-small">Rezoning history couldn’t be loaded right now.</p></section>
-
-  const within2 = ctx.precedents.filter((p) => p.miles != null && p.miles <= 2)
-  const tally = (list) => {
-    const t = {}
-    for (const p of list) t[p.status] = (t[p.status] || 0) + 1
-    return Object.entries(t).map(([k, n]) => `${n} ${k.toLowerCase()}`).join(', ')
-  }
-  const city = ctx.cityCounts
-  const cityTotal = Object.values(city).reduce((a, b) => a + b, 0)
-  const isN2 = code.startsWith('N2')
-  const factors = [
-    { tone: fit.fit === 'consistent' ? 'good' : fit.fit === 'inconsistent' ? 'warn' : 'neutral', title: '2040 Policy Map', text: fit.note },
-    {
-      tone: ctx.precedents.some((p) => p.status === 'Approved') ? 'good' : 'neutral',
-      title: 'Nearby precedents',
-      text: ctx.precedents.length
-        ? `${plural(ctx.precedents.length, 'rezoning')} to ${code} within 5 miles since the UDO took effect in June 2023 (${tally(ctx.precedents)}); ${within2.length ? `${within2.length} of them within 2 miles` : 'none within 2 miles'}.`
-        : `No rezonings to ${code} within 5 miles since the UDO took effect in June 2023. This would be a first for the area, which cuts both ways: no precedent to point to, but no history of neighbors fighting one either.`,
-    },
-    ...(cityTotal ? [{
-      tone: 'neutral', title: 'Citywide record',
-      text: `Charlotte has decided ${plural(cityTotal, `${code} request`)} since the UDO: ${Object.entries(city).map(([k, n]) => `${n} ${k.toLowerCase()}`).join(', ')}. Requests losing support are usually withdrawn before a vote rather than denied.`,
-    }] : []),
-    ...(ctx.pending.length ? [{ tone: 'neutral', title: 'In process nearby', text: `${plural(ctx.pending.length, 'petition')} for ${code} currently in process within 5 miles.` }] : []),
-    {
-      tone: ctx.frontage?.arterial ? 'good' : isN2 ? 'warn' : 'neutral',
-      title: 'Street frontage',
-      text: ctx.frontage
-        ? `Fronts ${ctx.frontage.name ? titleCase(ctx.frontage.name) : 'a street'} (${ctx.frontage.kind}).${isN2 ? (ctx.frontage.arterial ? ' Neighborhood 2 districts are usually expected along thoroughfares like this.' : ' Neighborhood 2 districts are usually expected along thoroughfares, not local streets.') : code === 'N1-F' ? (ctx.frontage.arterial ? ' N1-F is usually applied along streets like this.' : ' N1-F is usually applied along arterial streets.') : ''}`
-        : 'No street frontage found in the city street data.',
-    },
-    {
-      tone: ctx.intenseNeighbors.length ? 'good' : isN2 ? 'warn' : 'neutral',
-      title: 'Adjoining zoning',
-      text: ctx.neighbors.length
-        ? `${ctx.neighbors.join(', ')}.${ctx.intenseNeighbors.length ? ` Next to ${ctx.intenseNeighbors.join(', ')}, so ${code} would be a transition rather than a jump.` : isN2 ? ` Surrounded by Neighborhood 1 zoning, so ${code} would be a step up from everything around it.` : ''}`
-        : 'Adjoining zoning couldn’t be determined.',
-    },
-  ]
 
   return (
     <section className="approval">
