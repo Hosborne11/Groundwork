@@ -45,7 +45,7 @@ export async function itApprovalContext(parcel, code) {
       ...nearGeom, where, outFields: 'CASE_NU', groupByFieldsForStatistics: 'CASE_NU',
       outStatistics: JSON.stringify([{ statisticType: 'count', onStatisticField: 'OBJECTID', outStatisticFieldName: 'n' }]), f: 'json',
     }),
-    tigerStreets(parcel, 80),
+    tigerStreets(parcel, 600),
     getJSON(`${IT_ZONING}/query`, {
       geometry: padded(parcel, 100), geometryType: 'esriGeometryEnvelope', inSR: 4326, spatialRel: 'esriSpatialRelIntersects',
       outFields: 'NEW_ZONIN', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0001, f: 'json',
@@ -74,6 +74,22 @@ export async function itApprovalContext(parcel, code) {
   const rank = (m) => (m === 'S1100' ? 0 : m === 'S1200' ? 1 : m === 'S1400' ? 2 : 3)
   const front = (ok(roads) || []).filter((r) => turf.booleanIntersects(r, reach)).sort((a, b) => rank(a.properties.mtfcc) - rank(b.properties.mtfcc))
   const frontage = front.length ? { name: front[0].properties.name, kind: ROAD_KIND[front[0].properties.mtfcc] || 'street', arterial: rank(front[0].properties.mtfcc) <= 1 } : null
+  // no road touches the parcel: name the nearest one, measured edge to edge
+  let nearestRoad = null
+  if (!frontage) {
+    const outline = turf.polygonToLine(parcel)
+    const lines = (outline.type === 'FeatureCollection' ? outline.features : [outline]).flatMap((l) => (l.geometry.type === 'LineString' ? [l] : l.geometry.coordinates.map((c) => turf.lineString(c))))
+    const pv = lines.flatMap((l) => l.geometry.coordinates)
+    for (const r of ok(roads) || []) {
+      for (const path of r.geometry.coordinates) {
+        if (path.length < 2) continue
+        const rl = turf.lineString(path)
+        let d = Math.min(...pv.map((v) => turf.pointToLineDistance(v, rl, { units: 'feet' })))
+        for (const v of path) for (const l of lines) d = Math.min(d, turf.pointToLineDistance(v, l, { units: 'feet' }))
+        if (!nearestRoad || d < nearestRoad.feet) nearestRoad = { name: r.properties.name, feet: Math.round(d) }
+      }
+    }
+  }
 
   // adjoining zoning (excluding the parcel's own footprint)
   const nbr = new Set()
@@ -88,7 +104,7 @@ export async function itApprovalContext(parcel, code) {
   const intense = neighbors.filter((d) => /^(CZ-)?(SF-?5|MFR|MXD|NBD|GBD|RBD|DCD|DTD|L-?I|H-?I)/.test(d))
 
   return {
-    code, town: 'Indian Trail', precedents, cityCounts: {}, pending: [], frontage, neighbors, intenseNeighbors: intense,
+    code, town: 'Indian Trail', precedents, cityCounts: {}, pending: [], frontage, nearestRoad, neighbors, intenseNeighbors: intense,
     mapOnly: true, // precedents come from the zoning map: approved cases only
     failed: [stats, roads, zones].filter((r) => !ok(r)).length,
   }

@@ -74,11 +74,11 @@ export default function ApprovalContext({ parcel, code, placeType, editor, onFac
       }] : []),
       ...(ctx.pending.length ? [{ tone: 'neutral', title: 'In process nearby', text: `${plural(ctx.pending.length, 'petition')} for ${code} currently in process within 5 miles.` }] : []),
       {
-        tone: ctx.frontage?.arterial ? 'good' : isN2 ? 'warn' : 'neutral',
+        tone: ctx.frontage?.arterial ? 'good' : isN2 || ctx.nearestRoad ? 'warn' : 'neutral',
         title: 'Street frontage',
         text: ctx.frontage
           ? `Fronts ${ctx.frontage.name ? titleCase(ctx.frontage.name) : 'a street'} (${ctx.frontage.kind}).${isN2 ? (ctx.frontage.arterial ? ` ${code === 'MFR' ? 'Multifamily zoning is' : 'Neighborhood 2 districts are'} usually expected along thoroughfares like this.` : ` ${code === 'MFR' ? 'Multifamily zoning is' : 'Neighborhood 2 districts are'} usually expected along thoroughfares, not local streets.`) : code === 'N1-F' ? (ctx.frontage.arterial ? ' N1-F is usually applied along streets like this.' : ' N1-F is usually applied along arterial streets.') : ''}`
-          : 'No street frontage found in the street data.',
+          : ctx.nearestRoad ? `No road touches the parcel; the nearest is ${titleCase(ctx.nearestRoad.name || 'an unnamed road')}, about ${Math.round(ctx.nearestRoad.feet / 10) * 10} ft away. Access may depend on an easement or a neighboring parcel, which a rezoning (and any development) would need to solve.` : 'No street frontage found in the street data.',
       },
       {
         tone: ctx.intenseNeighbors.length ? 'good' : isN2 ? 'warn' : 'neutral',
@@ -128,7 +128,7 @@ export default function ApprovalContext({ parcel, code, placeType, editor, onFac
               <li key={p.petition}>
                 <button className={`link-btn ${active === p.petition ? 'on' : ''}`} onClick={() => show(p)} disabled={!p.shape}>
                   <strong>{p.petition}</strong> · {p.requested} · {p.status}{p.decided ? ` ${monthYear(p.decided)}` : p.year ? ` (${p.year})` : ''}
-                  {p.miles != null && ` · ${p.miles.toFixed(1)} mi`}{p.lots ? ` · ${p.lots} lots` : p.acres ? ` · ${Number(p.acres).toFixed(1)} ac` : ''}{p.from ? ` · from ${p.from}` : ''}
+                  {p.miles != null && ` · ${p.miles.toFixed(1)} mi`}{p.lots ? ` · ${p.lots} ${p.lots === 1 ? 'lot' : 'lots'}` : p.acres ? ` · ${Number(p.acres).toFixed(1)} ac` : ''}{p.from ? ` · from ${p.from}` : ''}
                 </button>
               </li>
             ))}
