@@ -385,6 +385,18 @@ export default function App() {
     setCursor: (c) => { if (map.current) map.current.getCanvas().style.cursor = c },
     // screen position of a map point, for grabbing handles and lot lines
     project: (ll) => map.current?.project(ll),
+    // outline rezoning precedents (or clear them with null); fit the view to include `focus`
+    showPrecedents: (fc, focus) => {
+      const m = map.current; if (!m) return
+      const empty = { type: 'FeatureCollection', features: [] }
+      if (!m.getSource('precedents')) {
+        m.addSource('precedents', { type: 'geojson', data: empty })
+        m.addLayer({ id: 'precedents-fill', type: 'fill', source: 'precedents', paint: { 'fill-color': '#7C3AED', 'fill-opacity': ['case', ['get', 'active'], 0.35, 0.15] } })
+        m.addLayer({ id: 'precedents-line', type: 'line', source: 'precedents', paint: { 'line-color': '#7C3AED', 'line-width': ['case', ['get', 'active'], 3, 1.5] } })
+      }
+      m.getSource('precedents').setData(fc || empty)
+      if (focus) m.fitBounds(turf.bbox(focus), { padding: { top: 80, bottom: 80, left: 80, right: 460 }, maxZoom: 15, duration: 900 })
+    },
   }), [])
 
   useEffect(() => {

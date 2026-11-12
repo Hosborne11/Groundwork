@@ -2,9 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import * as turf from '@turf/turf'
 import { neighborhoodKml, LOT_COLORS } from '../lib/neighborhood'
 import { nearbyStreets } from '../lib/charlotte'
-import { N1, CONSERVATION_DISTRICTS, CONSERVATION_MIN_ACRES, MIXED_INCOME_MIN_ACRES, HOUSING, LOT_HOUSING, unitsFor, housingAllowed, FRONT_SETBACK_ASSUMED, MIN_HOUSE_DEPTH, upzoneOptions, policyFit, TOWNHOME, APARTMENT } from '../data/charlotteUdo'
+import { N1, CONSERVATION_DISTRICTS, CONSERVATION_MIN_ACRES, MIXED_INCOME_MIN_ACRES, HOUSING, LOT_HOUSING, unitsFor, housingAllowed, FRONT_SETBACK_ASSUMED, MIN_HOUSE_DEPTH, upzoneOptions, TOWNHOME, APARTMENT } from '../data/charlotteUdo'
 import { usePlans, savePlan, getPlan, renamePlan, duplicatePlan, deletePlan } from '../lib/planStore'
 import { handlesFor, softDrag, pxToSegment, feetAlong, ringOf, polygonOf } from '../lib/editHandles'
+import ApprovalContext from './ApprovalContext'
 
 const fmt = (n, d = 0) => Number(n).toLocaleString('en-US', { maximumFractionDigits: d, minimumFractionDigits: d })
 
@@ -639,9 +640,9 @@ export default function NeighborhoodCard({ parcel, parts, code: zonedCode, place
         <div className="scenario-banner">
           <strong>Rezoning scenario: {zonedCode} → {scenario}</strong>
           <span>Drafted under {scenario} rules. Building this way needs a rezoning approved by City Council.</span>
-          {(() => { const f = policyFit(scenario, placeType); return <span className={`fit ${f.fit}`}>{f.fit === 'consistent' ? '✓' : f.fit === 'inconsistent' ? '!' : '?'} {f.note}</span> })()}
         </div>
       )}
+      {scenario && !parts && <ApprovalContext parcel={parcel} code={scenario} placeType={placeType} editor={editor} />}
       {form && saveForm}
       {!editing && !form && savedList}
 

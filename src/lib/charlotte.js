@@ -189,3 +189,109 @@ export async function nearbyStreets(parcel, feet = 500) {
   })
   return (d.features || []).filter((f) => f.geometry?.paths?.length).map((f) => turf.multiLineString(f.geometry.paths, { name: f.attributes.STREETNAME }))
 }
+
+/* ---------- approval context for a rezoning scenario ---------- */
+// Charlotte's UDO took effect June 1, 2023; districts like N1-C and N2-A only exist from then on.
+const UDO_START = '2023-06-01'
+const MILE = 5280
+const ARTERIAL = { EXMJTH: 'major thoroughfare', EXMJTHC3C: 'major thoroughfare', PROPMJTH: 'major thoroughfare', EXMINTH: 'minor thoroughfare', PROPMINTH: 'minor thoroughfare', EXCOLLMJ: 'major collector', C2EX: 'collector' }
+
+/**
+ * Factors staff and Council weigh for a rezoning to `code`, around this parcel:
+ *  - precedents: rezonings requesting the same district within 5 miles since the UDO (nearest first)
+ *  - citywide: how all requests for that district have been decided since the UDO
+ *  - pending: petitions for the same district in process nearby
+ *  - frontage: the most significant street class touching the parcel
+ *  - neighbors: zoning districts on adjoining land
+ */
+export async function approvalContext(parcel, code) {
+  const c = centerOf(parcel)
+  const like = `RequestedZoning LIKE '${code}%'`
+  const since = `Received >= DATE '${UDO_START}'`
+  const [w, s, e, n] = turf.bbox(parcel)
+  const pad = (feet) => { const dLat = feet / 364000, dLng = dLat / Math.cos((((s + n) / 2) * Math.PI) / 180); return [w - dLng, s - dLat, e + dLng, n + dLat].join(',') }
+
+  const [near, city, pend, streets, zones] = await Promise.allSettled([
+    getJSON(`${HISTORY}/query`, {
+      geometry: `${c[0]},${c[1]}`, geometryType: 'esriGeometryPoint', inSR: 4326, distance: 5, units: 'esriSRUnit_StatuteMile',
+      spatialRel: 'esriSpatialRelIntersects', where: `${since} AND ${like}`,
+      outFields: 'Petition,Status,RequestedZoning,ExistingZoning,Received,Approved,PetAcres', returnGeometry: true, outSR: 4326,
+      maxAllowableOffset: 0.0002, f: 'json',
+    }),
+    getJSON(`${HISTORY}/query`, {
+      where: `${since} AND ${like}`, outFields: 'Status', groupByFieldsForStatistics: 'Status',
+      outStatistics: JSON.stringify([{ statisticType: 'count', onStatisticField: 'Petition', outStatisticFieldName: 'n' }]), f: 'json',
+    }),
+    getJSON(`${ACTIVE}/query`, {
+      geometry: `${c[0]},${c[1]}`, geometryType: 'esriGeometryPoint', inSR: 4326, distance: 5, units: 'esriSRUnit_StatuteMile',
+      spatialRel: 'esriSpatialRelIntersects', where: `ReqZone LIKE '${code}%'`, outFields: 'Petition,ReqZone,PetAcres,Received', returnGeometry: true, outSR: 4326,
+      maxAllowableOffset: 0.0002, f: 'json',
+    }),
+    getJSON('/gis/clt/CountyData/Streets/MapServer/0/query', {
+      geometry: pad(60), geometryType: 'esriGeometryEnvelope', inSR: 4326, spatialRel: 'esriSpatialRelIntersects',
+      outFields: 'WHOLESTNAME,THOROUGHFARETYPE', returnGeometry: true, outSR: 4326, f: 'json',
+    }),
+    getJSON(`${ZONING}/query`, {
+      geometry: polygonGeom(turf.buffer(parcel, 0.03, { units: 'kilometers' })), geometryType: 'esriGeometryPolygon', inSR: 4326,
+      spatialRel: 'esriSpatialRelIntersects', outFields: 'ZoneDes', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0001, f: 'json',
+    }),
+  ])
+  const ok = (r) => (r.status === 'fulfilled' && !r.value?.error ? r.value : null)
+
+  // precedents, nearest first, one row per petition
+  const seen = new Set()
+  const toFeature = (g, props) => {
+    const rings = g?.rings
+    return rings?.length ? turf.polygon(rings, props) : null
+  }
+  const precedents = []
+  for (const f of ok(near)?.features || []) {
+    const a = f.attributes
+    if (seen.has(a.Petition)) continue
+    seen.add(a.Petition)
+    const shape = toFeature(f.geometry, { petition: a.Petition })
+    const miles = shape ? turf.distance(c, turf.pointOnFeature(shape), { units: 'miles' }) : null
+    precedents.push({
+      petition: a.Petition, status: STATUS[a.Status] || a.Status || 'Unknown', requested: (a.RequestedZoning || '').trim(),
+      from: (a.ExistingZoning || '').trim(), acres: a.PetAcres, received: a.Received ? new Date(a.Received) : null,
+      decided: a.Approved ? new Date(a.Approved) : null, miles, shape,
+    })
+  }
+  precedents.sort((x, y) => (x.miles ?? 99) - (y.miles ?? 99))
+
+  const cityCounts = {}
+  for (const f of ok(city)?.features || []) cityCounts[STATUS[f.attributes.Status] || 'Other'] = (cityCounts[STATUS[f.attributes.Status] || 'Other'] || 0) + f.attributes.n
+  const pending = (ok(pend)?.features || []).map((f) => {
+    const shape = toFeature(f.geometry, { petition: f.attributes.Petition })
+    return { petition: f.attributes.Petition, requested: (f.attributes.ReqZone || '').trim(), acres: f.attributes.PetAcres, shape,
+      miles: shape ? turf.distance(c, turf.pointOnFeature(shape), { units: 'miles' }) : null }
+  }).sort((x, y) => (x.miles ?? 99) - (y.miles ?? 99))
+
+  // frontage: streets whose line passes within ~60 ft of the parcel (not just their vertices:
+  // a long straight street has vertices only at its ends), best class wins
+  const reach = turf.buffer(parcel, 60, { units: 'feet' })
+  const touching = (ok(streets)?.features || []).filter((f) => f.geometry?.paths?.length)
+    .filter((f) => f.geometry.paths.some((p) => p.length >= 2 && turf.booleanIntersects(turf.lineString(p), reach)))
+  const rank = (t) => (/MJTH/.test(t) ? 0 : /MINTH/.test(t) ? 1 : /COLL|C2EX/.test(t) ? 2 : 3)
+  const front = touching.map((f) => ({ name: (f.attributes.WHOLESTNAME || '').trim(), type: f.attributes.THOROUGHFARETYPE || 'LOCAL' }))
+    .filter((x) => !/FRY|RAMP/.test(x.type)).sort((x, y) => rank(x.type) - rank(y.type))
+  const frontage = front.length ? { name: front[0].name, kind: ARTERIAL[front[0].type] || 'local street', arterial: rank(front[0].type) <= 1 } : null
+
+  // neighbors: districts on adjoining land, excluding the parcel's own footprint
+  const nbr = {}
+  for (const f of ok(zones)?.features || []) {
+    const d = (f.attributes.ZoneDes || '').trim()
+    if (!d || !f.geometry?.rings?.length) continue
+    const poly = turf.polygon(f.geometry.rings)
+    const inside = turf.booleanPointInPolygon(turf.pointOnFeature(poly), parcel) && turf.area(poly) <= turf.area(parcel) * 1.05
+    if (inside) continue
+    nbr[d] = (nbr[d] || 0) + 1
+  }
+  const neighbors = Object.keys(nbr).sort()
+  const intense = neighbors.filter((d) => /^(N2|NC|CG|CAC|RAC|UC|IMU|ML|MUD|OFC|CR|TOD|ML|IC|IG|B-|O-)/.test(d))
+
+  return {
+    code, precedents, cityCounts, pending, frontage, neighbors, intenseNeighbors: intense,
+    failed: [near, city, pend, streets, zones].filter((r) => !ok(r)).length,
+  }
+}
