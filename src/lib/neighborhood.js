@@ -194,7 +194,12 @@ export function neighborhoodDraft(parcel, opts) {
   const mix = (opts.mix?.length ? opts.mix : [{ width: std.minWidthFt, share: 100 }])
     .map((t, i) => ({ i, share: t.share, width: Math.max(t.width, minWidth) }))
   const maxLots = conservation ? Math.floor(grossSf / base.minLotSf) : Infinity
-  const D_MIN = 100, D_MAX = 220
+  // Block depth follows the lot mix: a 30 ft lot in N1-E wants ~100 ft of depth, not the 150-220 ft
+  // blocks that suit 70-90 ft lots. Narrow bounds mean more rows of streets on small-lot districts.
+  const wBase = Math.min(...((opts.mix?.length ? opts.mix.map((m) => Number(m.width) || 70) : [70])))
+  const dIdeal = minLotSf / Math.max(20, wBase)
+  const D_MIN = Math.max(85, Math.min(100, Math.round(dIdeal * 0.8)))
+  const D_MAX = Math.max(D_MIN + 15, Math.min(220, Math.round(dIdeal * 1.4)))
   // When lots must widen to meet the minimum area at this depth, every size shifts by the same
   // amount so the mix stays a mix (70/90/110 becomes 92/112/132, not 92/92/110).
   const sizedTypes = (depth) => {
@@ -248,9 +253,13 @@ export function neighborhoodDraft(parcel, opts) {
     }
     if (!ns.length) ns.push({ n: 1, d: Math.max(D_MIN, Math.min(D_MAX, (H - ROW_FT) / 2)) })
     let best = null
-    for (const c of ns.slice(-2)) {
+    const roadOf = (r) => r.streets.reduce((t, st) => t + path(st.pts).total, 0)
+    for (const c of ns.slice(dIdeal <= 100 ? -3 : -2)) { // small-lot districts gain from a third, shallower option
       const r = layoutN(ang, U, minX, minY, maxX, maxY, c.n, c.d, false)
-      if (r && (!best || r.lotCount > best.lotCount)) best = { ...r, redo: () => layoutN(ang, U, minX, minY, maxX, maxY, c.n, c.d, true) }
+      // most lots wins; equal lots go to the layout with less road
+      if (r && (!best || r.lotCount > best.lotCount || (r.lotCount === best.lotCount && roadOf(r) < roadOf(best)))) {
+        best = { ...r, redo: () => layoutN(ang, U, minX, minY, maxX, maxY, c.n, c.d, true) }
+      }
     }
     return best
   }
@@ -812,7 +821,10 @@ export function neighborhoodDraft(parcel, opts) {
       for (let i = 1; i < 8; i++) for (let j = 1; j < 8; j++) {
         const pt = [w + ((e - w) * i) / 8, s2 + ((n - s2) * j) / 8]
         if (!turf.booleanPointInPolygon(pt, f) || !clear(pt)) continue
-        const d = turf.pointToLineDistance(pt, turf.polygonToLine(f).type === 'FeatureCollection' ? turf.polygonToLine(f).features[0] : turf.polygonToLine(f))
+        // the outline can be several lines (holes, multipolygons); measure to the nearest of them
+        const out = turf.polygonToLine(f)
+        const parts = (out.type === 'FeatureCollection' ? out.features : [out]).flatMap((g) => (g.geometry.type === 'LineString' ? [g.geometry.coordinates] : g.geometry.coordinates))
+        const d = Math.min(...parts.map((c) => turf.pointToLineDistance(pt, turf.lineString(c))))
         if (!best || d > best.d) best = { pt, d }
       }
       return best ? best.pt : null // no clear spot: skip the label
