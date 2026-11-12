@@ -141,3 +141,24 @@ export function housingAllowed(key, code) {
 // 20 ft on new local streets. A house needs room for that, the rear setback, and a modest footprint.
 export const FRONT_SETBACK_ASSUMED = 20
 export const MIN_HOUSE_DEPTH = 30
+
+// ---- Rezoning scenarios ----
+// N1 districts from lowest to highest intensity; an upzoning scenario offers the ones after the current district.
+export const N1_ORDER = ['N1-A', 'N1-B', 'N1-C', 'N1-D', 'N1-E', 'N1-F']
+export const upzoneOptions = (code) => N1_ORDER.slice(N1_ORDER.indexOf(code) + 1)
+
+/**
+ * How a district fits the 2040 Policy Map place type: staff weigh this heavily in rezoning reviews.
+ * Returns { fit: 'consistent' | 'inconsistent' | 'unknown', note }.
+ */
+export function policyFit(code, placeName) {
+  if (!placeName) return { fit: 'unknown', note: 'The 2040 Policy Map place type for this parcel isn’t loaded.' }
+  const family = code.startsWith('N1') ? 'Neighborhood 1' : code.startsWith('N2') ? 'Neighborhood 2' : null
+  if (family && placeName.toLowerCase().startsWith(family.toLowerCase())) {
+    return {
+      fit: 'consistent',
+      note: `${code} matches the parcel’s ${placeName} place type on the 2040 Policy Map, which staff weigh in favor of a rezoning.${code === 'N1-F' ? ' N1-F is usually applied along arterial streets.' : ''}`,
+    }
+  }
+  return { fit: 'inconsistent', note: `${code} doesn’t match the parcel’s ${placeName} place type on the 2040 Policy Map. Staff typically flag that as inconsistent, which makes approval harder but not impossible.` }
+}

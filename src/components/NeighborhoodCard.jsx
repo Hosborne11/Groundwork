@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import * as turf from '@turf/turf'
 import { neighborhoodKml, LOT_COLORS } from '../lib/neighborhood'
 import { nearbyStreets } from '../lib/charlotte'
-import { N1, CONSERVATION_DISTRICTS, CONSERVATION_MIN_ACRES, MIXED_INCOME_MIN_ACRES, HOUSING, LOT_HOUSING, unitsFor, housingAllowed, FRONT_SETBACK_ASSUMED, MIN_HOUSE_DEPTH } from '../data/charlotteUdo'
+import { N1, CONSERVATION_DISTRICTS, CONSERVATION_MIN_ACRES, MIXED_INCOME_MIN_ACRES, HOUSING, LOT_HOUSING, unitsFor, housingAllowed, FRONT_SETBACK_ASSUMED, MIN_HOUSE_DEPTH, upzoneOptions, policyFit } from '../data/charlotteUdo'
 import { usePlans, savePlan, getPlan, renamePlan, duplicatePlan, deletePlan } from '../lib/planStore'
 import { handlesFor, softDrag, pxToSegment, feetAlong, ringOf, polygonOf } from '../lib/editHandles'
 
@@ -47,7 +47,10 @@ const defaultMix = (w) => [{ width: w, share: 50 }, { width: w + 20, share: 30 }
  * Automatic neighborhood draft for a Charlotte N1 parcel. Draws on the map through onPlan.
  * floodPolys: floodplain shapes (null while the flood check runs).
  */
-export default function NeighborhoodCard({ parcel, parts, code, acres, floodPolys, floodFailed, onPlan, editor, openPlanId, onPlanOpened }) {
+export default function NeighborhoodCard({ parcel, parts, code: zonedCode, placeType, acres, floodPolys, floodFailed, onPlan, editor, openPlanId, onPlanOpened }) {
+  // A rezoning scenario drafts under another district's rules; everything below uses the effective district.
+  const [scenario, setScenario] = useState(null)
+  const code = scenario || zonedCode
   const std = N1[code]
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState('standard')
@@ -82,13 +85,13 @@ export default function NeighborhoodCard({ parcel, parts, code, acres, floodPoly
   const [current, setCurrent] = useState(null) // { id, name, description, key } of the plan that's open
   const [form, setForm] = useState(null) // { as: 'new' | 'rename', id?, name, description }
   const [saveError, setSaveError] = useState(null)
-  const snapshot = () => ({ settings: { mode, mix, reserve, variant, housing }, edit, removed })
+  const snapshot = () => ({ settings: { mode, mix, reserve, variant, housing, scenario }, edit, removed })
   // compare plans without remembered lot sizes, which fill in on their own after a refill
   const keyOf = (snap) => JSON.stringify(snap, (k, v) => (k === 'sideTypes' ? undefined : v))
   const dirty = current && keyOf(snapshot()) !== current.key
 
   const applyPlan = (p) => {
-    setMode(p.settings.mode); setMix(p.settings.mix); setReserve(p.settings.reserve); setVariant(p.settings.variant || 0); setHousing(p.settings.housing || 'sf')
+    setMode(p.settings.mode); setMix(p.settings.mix); setReserve(p.settings.reserve); setVariant(p.settings.variant || 0); setHousing(p.settings.housing || 'sf'); setScenario(p.settings.scenario || null)
     const e = p.edit ? { ...p.edit, streets: p.edit.streets.map((st) => ({ ...st, id: st.id ?? nextId.current++ })) } : null
     if (e) nextId.current = Math.max(nextId.current, ...e.streets.map((st) => (typeof st.id === 'number' ? st.id + 1 : 1)))
     setEdit(e); setRemoved(p.removed || []); setHistory([]); setSelected(null); setEditing(false); setOpen(true)
@@ -233,6 +236,33 @@ export default function NeighborhoodCard({ parcel, parts, code, acres, floodPoly
     }, edit ? 150 : 300)
     return () => clearTimeout(t)
   }, [open, mode, mix, reserve, variant, floodPolys, streets, parcel, code, minWidth, edit, removed, retry])
+
+  // ---- by-right baseline while a rezoning scenario is shown ----
+  const [baseline, setBaseline] = useState(null) // { lots } for the parcel as zoned
+  const baseWorker = useRef(null)
+  useEffect(() => {
+    if (!scenario || !open || floodPolys === null || streets === null) { setBaseline(null); return }
+    if (!baseWorker.current) {
+      baseWorker.current = new Worker(new URL('../lib/draftWorker.js', import.meta.url), { type: 'module' })
+    }
+    const id = Date.now()
+    baseWorker.current.onmessage = (e) => { if (e.data.id === id) setBaseline(e.data.result?.error ? { error: true } : { lots: e.data.result.lots }) }
+    setBaseline(null)
+    const bm = defaultMix(N1[zonedCode].minWidthFt), tot = bm.reduce((a, m) => a + m.share, 0)
+    baseWorker.current.postMessage({ id, parcel, opts: { code: zonedCode, mode: 'standard', mix: bm.map((m) => ({ ...m, share: (m.share / tot) * 100 })), reservePct: reserve, floodPolys, streets, variant: 0, network: null, removed: [] } })
+  }, [scenario, open, floodPolys, streets, parcel, zonedCode, reserve])
+  useEffect(() => () => baseWorker.current?.terminate(), [])
+
+  // switching the district resets lot sizes to the new district's defaults
+  const changeScenario = (next) => {
+    const nextCode = next || zonedCode
+    setScenario(next || null)
+    setMix(defaultMix(N1[nextCode].minWidthFt))
+    setEdit((cur) => (cur ? { ...cur, streets: cur.streets.map(({ sideTypes, sideCuts, ...st }) => st) } : cur))
+    if (mode === 'conservation' && !CONSERVATION_DISTRICTS.includes(nextCode)) setMode('standard')
+    if (mode === 'bonus' && !N1[nextCode].bonusTo) setMode('standard')
+    setVariant(0)
+  }
 
   // ---- editor actions ----
   const commit = useCallback((nextEdit, nextRemoved) => {
@@ -575,6 +605,22 @@ export default function NeighborhoodCard({ parcel, parts, code, acres, floodPoly
         <button className="link-btn" onClick={() => { setEditing(false); setOpen(false); setPlan(null); onPlan(null); setForm(null) }}>Hide draft</button>
       </div>
       {current?.description && <p className="plan-desc">{current.description}</p>}
+      {upzoneOptions(zonedCode).length > 0 && (
+        <label className="zoning-pick">
+          <span>Zoning</span>
+          <select value={scenario || ''} onChange={(e) => changeScenario(e.target.value)} disabled={editing}>
+            <option value="">As zoned ({zonedCode})</option>
+            {upzoneOptions(zonedCode).map((c) => <option key={c} value={c}>If rezoned to {c} ({N1[c].minLotSf.toLocaleString()} sq ft lots)</option>)}
+          </select>
+        </label>
+      )}
+      {scenario && (
+        <div className="scenario-banner">
+          <strong>Rezoning scenario: {zonedCode} → {scenario}</strong>
+          <span>Drafted under {scenario} rules. Building this way needs a rezoning approved by City Council.</span>
+          {(() => { const f = policyFit(scenario, placeType); return <span className={`fit ${f.fit}`}>{f.fit === 'consistent' ? '✓' : f.fit === 'inconsistent' ? '!' : '?'} {f.note}</span> })()}
+        </div>
+      )}
       {form && saveForm}
       {!editing && !form && savedList}
 
@@ -631,6 +677,13 @@ export default function NeighborhoodCard({ parcel, parts, code, acres, floodPoly
             {homes !== plan.lots && <span className="nb-homes">· {homes} homes</span>}
             <span className={`pass ${passAll ? 'yes' : 'no'}`}>{passAll ? 'PASS' : 'CHECK'}</span>
           </div>
+          {scenario && (
+            <p className="scenario-compare">
+              {baseline?.lots != null
+                ? <>By right as {zonedCode}: <strong>{baseline.lots} lots</strong> · as {scenario}: <strong>{plan.lots} lots</strong> <span className={plan.lots - baseline.lots >= 0 ? 'up' : 'down'}>({plan.lots - baseline.lots >= 0 ? '+' : ''}{plan.lots - baseline.lots})</span></>
+                : baseline?.error ? 'The by-right comparison couldn’t be drafted.' : `Drafting the by-right ${zonedCode} comparison…`}
+            </p>
+          )}
           <p className="nb-density">{fmt(plan.density, 2)} lots per acre{homes !== plan.lots ? ` · ${fmt(homes / plan.totalAc, 1)} homes per acre` : ''}{plan.capped ? ' · at the conservation maximum' : ''}</p>
           {allowed.ok !== true && (
             <div className={`note ${allowed.ok === false ? 'warn' : ''}`}>

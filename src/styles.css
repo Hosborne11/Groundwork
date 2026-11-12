@@ -560,3 +560,14 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .udo-checks .unchecked .mark { background: var(--ink-3); }
 .measure { margin: -2px 0 8px; padding: 5px 8px; border-radius: 4px; background: #1C2A33; color: #F4D35E; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .editor-box .seg { flex-wrap: wrap; }
+
+/* ---------- rezoning scenarios ---------- */
+.zoning-pick { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 8px; font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
+.zoning-pick select { font: inherit; font-size: 12.5px; padding: 4px 6px; border: 1px solid var(--rule); border-radius: 4px; background: var(--card); max-width: 70%; }
+.scenario-banner { display: flex; flex-direction: column; gap: 4px; margin: 0 0 10px; padding: 8px 10px; border-left: 4px solid #7C3AED; border-radius: 4px; background: #F3EEFF; font-size: 12px; color: var(--ink-2); }
+.scenario-banner strong { color: #4C1D95; font-size: 13px; }
+.scenario-banner .fit.consistent { color: var(--good); }
+.scenario-banner .fit.inconsistent { color: #9A5B00; }
+.scenario-compare { margin: -2px 0 6px; font-size: 12.5px; }
+.scenario-compare .up { color: var(--good); font-weight: 700; }
+.scenario-compare .down { color: var(--flag); font-weight: 700; }
