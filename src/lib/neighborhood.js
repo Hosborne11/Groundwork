@@ -786,8 +786,56 @@ export function neighborhoodDraft(parcel, opts) {
         }))
       }
     }
+    // ---- townhomes: group adjacent sublots into buildings ----
+    const th = opts.product === 'townhomes' ? { unitW: 22, maxPerBldg: 5, bldgDepth: 40, maxBldgFt: 120, style: 'front', setback: 20, ...(opts.th || {}) } : null
+    let buildings = 0, bldgMaxFt = 0, bldgUnits = []
+    if (th) {
+      // chains of sublots whose front corners touch
+      const key = (p) => `${Math.round(p[0] * 2)}|${Math.round(p[1] * 2)}`
+      const byStart = new Map(), ends = new Set()
+      for (const l of lots) { if (!l.front) continue; byStart.set(key(l.front[0]), l); ends.add(key(l.front[1])) }
+      const chains = []
+      for (const l of lots) {
+        if (!l.front || ends.has(key(l.front[0]))) continue // not a chain start
+        const chain = []
+        let cur = l, guard = 0
+        while (cur && guard++ < 500) { chain.push(cur); cur = byStart.get(key(cur.front[1])); if (cur === l) break }
+        chains.push(chain)
+      }
+      // split chains into buildings by unit count and building length
+      const groups = []
+      for (const chain of chains) {
+        let g = [], gLen = 0
+        for (const l of chain) {
+          const w = len(sub(l.front[1], l.front[0]))
+          if (g.length && (g.length >= th.maxPerBldg || gLen + w > th.maxBldgFt + 10)) { groups.push(g); g = []; gLen = 0 }
+          g.push(l); gLen += w
+        }
+        if (g.length) groups.push(g)
+      }
+      for (const g of groups) {
+        // front polyline through the group's shared corners, inset 5 ft at both ends
+        const line = [g[0].front[0], ...g.map((l) => l.front[1])]
+        const d0 = norm(sub(line[1], line[0])), d1 = norm(sub(line[line.length - 1], line[line.length - 2]))
+        line[0] = add(line[0], mul(d0, 5)); line[line.length - 1] = sub(line[line.length - 1], mul(d1, 5))
+        const inwardOf = (i) => { const l = g[Math.min(i, g.length - 1)]; return norm(sub(mul(add(l.back[0], l.back[1]), 0.5), mul(add(l.front[0], l.front[1]), 0.5))) }
+        const frontL = line.map((p, i) => add(p, mul(inwardOf(i), th.setback)))
+        const backL = line.map((p, i) => add(p, mul(inwardOf(i), th.setback + th.bldgDepth)))
+        const ring = [...frontL, ...backL.slice().reverse()]
+        features.push(turf.feature(back({ type: 'Polygon', coordinates: [[...ring, ring[0]]] }), { kind: 'building', units: g.length, fill: '#8A8378' }))
+        const ft = Math.round(g.reduce((t, l) => t + len(sub(l.front[1], l.front[0])), 0) - 10)
+        buildings++; bldgMaxFt = Math.max(bldgMaxFt, ft); bldgUnits.push(g.length)
+        // rear alley: an 8 ft half-lane along the group's back line (back-to-back rows share a 16 ft lane)
+        if (th.style === 'alley') {
+          const bline = [g[0].back[0], ...g.map((l) => l.back[1])]
+          const lane = [...bline, ...bline.map((p, i) => sub(p, mul(inwardOf(i), 8))).slice().reverse()]
+          features.push(turf.feature(back({ type: 'Polygon', coordinates: [[...lane, lane[0]]] }), { kind: 'alley', fill: '#2A3843' }))
+        }
+      }
+    }
+
     // driveway: from the street edge, a bit off-center like a side garage, into the lot
-    for (const l of lots) {
+    for (const l of (th && th.style === 'alley' ? [] : lots)) {
       if (!l.front) continue
       const [f0, f1] = l.front, [b0, b1] = l.back
       const at = add(f0, mul(sub(f1, f0), 0.3))
@@ -807,7 +855,7 @@ export function neighborhoodDraft(parcel, opts) {
     }
     // every shape carries its own fill color so the map style stays simple
     const FILL = { road: '#1C2A33', pond: '#3A8DDE', green: '#38A169', park: '#2F855A', flood: '#5BB5D9' }
-    for (const f of features) f.properties.fill = f.properties.kind === 'lot' ? f.properties.color : FILL[f.properties.kind] || '#FFFFFF'
+    for (const f of features) f.properties.fill = f.properties.kind === 'lot' ? f.properties.color : f.properties.fill || FILL[f.properties.kind] || '#FFFFFF'
     // Ponds and parks get first claim on label space; green-space labels must not sit on water or a park.
     const LABEL_RANK = { pond: 0, park: 1, flood: 2, green: 3 }
     const blockers = features.filter((f) => f.properties.kind === 'pond' || f.properties.kind === 'park')
@@ -874,6 +922,7 @@ export function neighborhoodDraft(parcel, opts) {
       openPct: (openSf / grossSf) * 100,
       density: lots.length / (grossSf / 43560),
       minLotSf,
+      ...(th ? { buildings, bldgMaxFt, bldgUnits, product: 'townhomes', thStyle: th.style } : {}),
       check: { minSf: Math.round(minActual), minWidth: minWidthActual && Math.round(minWidthActual), minDepth: minDepthActual && Math.round(minDepthActual) },
       pass: minActual >= minLotSf - 1 && lots.length <= maxLots,
       capped: conservation && lots.length >= maxLots,

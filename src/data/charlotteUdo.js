@@ -19,6 +19,10 @@ export const N1 = {
   'N1-D': { minLotSf: 3500, minWidthFt: 40, sideFt: 5, rearFt: 25, heightFt: 40, bonusTo: 'N1-E' },
   'N1-E': { minLotSf: 3000, minWidthFt: 30, sideFt: 5, rearFt: 20, heightFt: 40, bonusTo: null },
   'N1-F': { minLotSf: 3000, minWidthFt: 30, sideFt: 5, rearFt: 20, heightFt: 48, bonusTo: null },
+  // Neighborhood 2: townhome (multi-family attached) districts. Per-sublot standards here are the
+  // working minimums Groundwork drafts with (22 ft units on ~100 ft sublots), since N2 sublot
+  // dimensions are set case by case through conditional rezonings rather than one UDO table.
+  'N2-A': { minLotSf: 2000, minWidthFt: 20, sideFt: 5, rearFt: 20, heightFt: 48, bonusTo: null, townhome: true },
 }
 export const N1_COVERAGE = 'Max building coverage: 40% on lots of 10,000 sq ft or more, 50% on smaller lots'
 export const N1_USES = {
@@ -121,6 +125,11 @@ export const unitsFor = (key) => HOUSING.find((h) => h.key === key)?.units || 1
 
 /** { ok: true | 'limited' | false, note } for a housing type in a district. */
 export function housingAllowed(key, code) {
+  if (N1[code]?.townhome) {
+    if (key === 'townhomes') return { ok: true, note: 'N2-A is Charlotte’s district for townhomes (multi-family attached). Nearly all recent townhome communities were approved as N2-A conditional rezonings.' }
+    if (key === 'apartments') return { ok: false, note: 'Apartments (multi-family stacked) need N2-B or a higher-intensity district, not N2-A.' }
+    return { ok: true, note: 'N2-A also allows house-scale buildings, but Groundwork drafts N2-A scenarios as townhomes.' }
+  }
   const nf = code === 'N1-F'
   if (key === 'sf' || key === 'duplex') return { ok: true }
   if (key === 'triplex' || key === 'mix') return { ok: true, note: 'Triplexes also have site layout standards in the UDO that this draft doesn’t check.' }
@@ -161,4 +170,19 @@ export function policyFit(code, placeName) {
     }
   }
   return { fit: 'inconsistent', note: `${code} doesn’t match the parcel’s ${placeName} place type on the 2040 Policy Map. Staff typically flag that as inconsistent, which makes approval harder but not impossible.` }
+}
+
+// ---- Townhomes (N2-A rezoning scenarios) ----
+// Defaults follow the conditions that recent approved Charlotte townhome rezonings
+// (N2-A(CD) site plans) repeat: 4-6 unit buildings about 100-120 ft long, ~20 ft front
+// setbacks, 5 ft building sides (10 ft between buildings), 48 ft height.
+export const TOWNHOME = {
+  unitW: 22,        // ft of frontage per unit
+  maxPerBldg: 5,    // units per building
+  bldgDepth: 40,    // building footprint depth, ft
+  maxBldgFt: 120,   // longest building typically conditioned
+  styles: [
+    { key: 'front', label: 'Front-loaded garages' },
+    { key: 'alley', label: 'Rear alley-loaded' },
+  ],
 }
