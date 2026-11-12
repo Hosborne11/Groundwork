@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { openReportWindow, writeSiteReport } from '../lib/siteReport'
+import { IT_RULES, IT_SOURCE } from '../data/indianTrail'
 import * as turf from '@turf/turf'
 import { nearestSewer, nearestWater, floodShare, soilsFor, zoningAt } from '../lib/gis'
 import { charlotteZoning, placeType } from '../lib/charlotte'
@@ -85,7 +86,7 @@ const charlotteUtility = (kind) => async (parcel) => {
 async function unionZoningCheck(parcel) {
   const z = await unionZoning(parcel)
   if (!z.code) return { tone: 'none', value: z.town, detail: `${z.town} zoning isn't published in the county's map; check with the town.` }
-  return { tone: 'none', value: z.code, detail: [`${z.source} zoning`, z.source === 'Union County' && z.town, z.petition && `rezoning petition ${z.petition}`].filter(Boolean).join(' · ') }
+  return { tone: 'none', value: z.code, town: z.town, code: z.code, detail: [`${z.source} zoning`, z.source === 'Union County' && z.town, z.petition && `rezoning petition ${z.petition}`].filter(Boolean).join(' · ') }
 }
 
 async function yorkZoningCheck(parcel) {
@@ -186,6 +187,9 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
   const floodPolys = flood.status === 'done' ? flood.polys || [] : flood.status === 'error' ? [] : null
   const zoneParts = cltZoning ? parseZoning(cltZoning.code) : null
   const canSketch = isMeck && zoneParts && N1[zoneParts.base] && !zoneParts.conditional
+  // Indian Trail base residential districts (conditional CZ- districts have site-specific plans)
+  const itCode = isUnion && uZoning.status === 'done' && uZoning.town === 'Indian Trail' && IT_RULES[uZoning.code] && !IT_RULES[uZoning.code].apartment ? uZoning.code : null
+  const itRule = itCode ? IT_RULES[itCode] : null
   const saleDate = `${p.saleMonth ? `${p.saleMonth}/` : ''}${p.saleYear || ''}`
   const sale = p.salePrice ? `${money(p.salePrice)} · ${saleDate}` : p.nominalSale ? `Nominal transfer, not a market sale · ${saleDate}` : 'No recorded sale'
 
@@ -216,7 +220,7 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
       assessed: money(p.assessed), sale: `${sale}${deed ? ` (deed covers ${deed.count} parcels)` : ''}`,
       zoning: isMeck ? cltZoning?.code : zoningCheck?.value, place: isMeck && place ? `${place.name}${place.area ? ` · ${place.area}` : ''}` : null,
       checks: [item('Floodplain', flood), item('Soils', soils), item('Sewer', sewer), item('Water', water), item('Utilities', yUtility), item('Land use plan', yLandUse)].filter(Boolean),
-      summary: isMeck ? draftSummary : null,
+      summary: isMeck || itCode ? draftSummary : null,
       snapshot,
     })
     setReporting(false)
@@ -247,6 +251,22 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
           {place && <p className="place">2040 Policy Map: <strong>{place.name}</strong>{place.area ? ` · ${place.area}` : ''}</p>}
           <BuildSection zoning={cltZoning} acres={p.acres} floodPct={floodPct} />
           {canSketch && <NeighborhoodCard parcel={parcel} code={zoneParts.base} placeType={place?.name} acres={p.acres} floodPolys={floodPolys} floodFailed={flood.status === 'error'} onPlan={onPlan} editor={editor} openPlanId={openPlanId} onPlanOpened={onPlanOpened} onSummary={setDraftSummary} />}
+        </section>
+      )}
+
+      {itRule && (
+        <section className="section">
+          <h3>What you can build</h3>
+          <div className="zone-head"><strong className="zone-code">{itCode}</strong> <span>Indian Trail single-family</span></div>
+          <dl className="facts">
+            <dt>Min lot area</dt><dd>{itRule.minLotSf.toLocaleString()} sq ft</dd>
+            <dt>Min frontage</dt><dd>{itRule.minWidthFt} ft</dd>
+            <dt>Front setback</dt><dd>{itRule.frontFt} ft ({itRule.frontMajorFt} ft on thoroughfares)</dd>
+            <dt>Side / rear setback</dt><dd>{itRule.sideFt} ft / {itRule.rearFt} ft</dd>
+            <dt>Max height · coverage</dt><dd>{itRule.heightFt} ft · {itRule.coverage}</dd>
+          </dl>
+          <p className="muted-small">{IT_SOURCE}. Cluster and open space subdivisions (conditional zoning) allow smaller lots in exchange for common open space.</p>
+          <NeighborhoodCard parcel={parcel} code={itCode} acres={p.acres} floodPolys={floodPolys} floodFailed={flood.status === 'error'} onPlan={onPlan} editor={editor} openPlanId={openPlanId} onPlanOpened={onPlanOpened} onSummary={setDraftSummary} />
         </section>
       )}
 

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import * as turf from '@turf/turf'
 import { approvalContext } from '../lib/charlotte'
-import { policyFit } from '../data/charlotteUdo'
+import { itApprovalContext } from '../lib/indianTrail'
+import { policyFit, jurisdictionOf } from '../data/charlotteUdo'
 
 const monthYear = (d) => d?.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
@@ -19,7 +20,7 @@ export default function ApprovalContext({ parcel, code, placeType, editor, onFac
   useEffect(() => {
     let live = true
     setState('loading'); setCtx(null); setActive(null)
-    approvalContext(parcel, code)
+    ;(jurisdictionOf(code) === 'Indian Trail' ? itApprovalContext : approvalContext)(parcel, code)
       .then((c) => { if (live) { setCtx(c); setState('done') } })
       .catch(() => { if (live) setState('error') })
     return () => { live = false }
@@ -53,15 +54,19 @@ export default function ApprovalContext({ parcel, code, placeType, editor, onFac
     }
     const city = ctx.cityCounts
     const cityTotal = Object.values(city).reduce((a, b) => a + b, 0)
-    const isN2 = code.startsWith('N2')
+    const isN2 = code.startsWith('N2') || code === 'MFR' // the higher-intensity districts expected on thoroughfares
     const factors = [
-      { tone: fit.fit === 'consistent' ? 'good' : fit.fit === 'inconsistent' ? 'warn' : 'neutral', title: '2040 Policy Map', text: fit.note },
+      { tone: fit.fit === 'consistent' ? 'good' : fit.fit === 'inconsistent' ? 'warn' : 'neutral', title: jurisdictionOf(code) === 'Charlotte' ? '2040 Policy Map' : 'Comprehensive Plan', text: fit.note },
       {
         tone: ctx.precedents.some((p) => p.status === 'Approved') ? 'good' : 'neutral',
         title: 'Nearby precedents',
-        text: ctx.precedents.length
-          ? `${plural(ctx.precedents.length, 'rezoning')} to ${code} within 5 miles since the UDO took effect in June 2023 (${tally(ctx.precedents)}); ${within2.length ? `${within2.length} of them within 2 miles` : 'none within 2 miles'}.`
-          : `No rezonings to ${code} within 5 miles since the UDO took effect in June 2023. This would be a first for the area, which cuts both ways: no precedent to point to, but no history of neighbors fighting one either.`,
+        text: ctx.mapOnly
+          ? (ctx.precedents.length
+            ? `${plural(ctx.precedents.length, 'approved conditional rezoning')} to ${code} within 5 miles on ${ctx.town}’s zoning map, covering ${ctx.precedents.reduce((t, p) => t + (p.lots || 0), 0).toLocaleString()} lots${(() => { const y = Math.max(...ctx.precedents.map((p) => p.year || 0)); return y ? `, the most recent from ${y}` : '' })()}; ${within2.length ? `${within2.length} within 2 miles` : 'none within 2 miles'}. Only approved cases appear on a zoning map, so withdrawn or denied requests aren’t counted.`
+            : `No approved conditional rezonings to ${code} within 5 miles on ${ctx.town}’s zoning map. This would be a first for the area.`)
+          : ctx.precedents.length
+            ? `${plural(ctx.precedents.length, 'rezoning')} to ${code} within 5 miles since the UDO took effect in June 2023 (${tally(ctx.precedents)}); ${within2.length ? `${within2.length} of them within 2 miles` : 'none within 2 miles'}.`
+            : `No rezonings to ${code} within 5 miles since the UDO took effect in June 2023. This would be a first for the area, which cuts both ways: no precedent to point to, but no history of neighbors fighting one either.`,
       },
       ...(cityTotal ? [{
         tone: 'neutral', title: 'Citywide record',
@@ -72,14 +77,14 @@ export default function ApprovalContext({ parcel, code, placeType, editor, onFac
         tone: ctx.frontage?.arterial ? 'good' : isN2 ? 'warn' : 'neutral',
         title: 'Street frontage',
         text: ctx.frontage
-          ? `Fronts ${ctx.frontage.name ? titleCase(ctx.frontage.name) : 'a street'} (${ctx.frontage.kind}).${isN2 ? (ctx.frontage.arterial ? ' Neighborhood 2 districts are usually expected along thoroughfares like this.' : ' Neighborhood 2 districts are usually expected along thoroughfares, not local streets.') : code === 'N1-F' ? (ctx.frontage.arterial ? ' N1-F is usually applied along streets like this.' : ' N1-F is usually applied along arterial streets.') : ''}`
-          : 'No street frontage found in the city street data.',
+          ? `Fronts ${ctx.frontage.name ? titleCase(ctx.frontage.name) : 'a street'} (${ctx.frontage.kind}).${isN2 ? (ctx.frontage.arterial ? ` ${code === 'MFR' ? 'Multifamily zoning is' : 'Neighborhood 2 districts are'} usually expected along thoroughfares like this.` : ` ${code === 'MFR' ? 'Multifamily zoning is' : 'Neighborhood 2 districts are'} usually expected along thoroughfares, not local streets.`) : code === 'N1-F' ? (ctx.frontage.arterial ? ' N1-F is usually applied along streets like this.' : ' N1-F is usually applied along arterial streets.') : ''}`
+          : 'No street frontage found in the street data.',
       },
       {
         tone: ctx.intenseNeighbors.length ? 'good' : isN2 ? 'warn' : 'neutral',
         title: 'Adjoining zoning',
         text: ctx.neighbors.length
-          ? `${ctx.neighbors.join(', ')}.${ctx.intenseNeighbors.length ? ` Next to ${ctx.intenseNeighbors.join(', ')}, so ${code} would be a transition rather than a jump.` : isN2 ? ` Surrounded by Neighborhood 1 zoning, so ${code} would be a step up from everything around it.` : ''}`
+          ? `${ctx.neighbors.join(', ')}.${ctx.intenseNeighbors.length ? ` Next to ${ctx.intenseNeighbors.join(', ')}, so ${code} would be a transition rather than a jump.` : isN2 ? ` Surrounded by lower-intensity zoning, so ${code} would be a step up from everything around it.` : ''}`
           : 'Adjoining zoning couldn’t be determined.',
       },
     ]
@@ -95,7 +100,7 @@ export default function ApprovalContext({ parcel, code, placeType, editor, onFac
     onFactors?.({
       factors: factors.map(({ tone, title, text }) => ({ tone, title, text })),
       cases: [...ctx.precedents.slice(0, 5), ...ctx.pending.slice(0, 3).map((p) => ({ ...p, status: 'In process' }))].map((p) => ({
-        petition: p.petition, requested: p.requested, status: p.status, decided: p.decided ? monthYear(p.decided) : null,
+        petition: p.petition, requested: p.requested, status: p.status, decided: p.decided ? monthYear(p.decided) : p.year ? String(p.year) : null, lots: p.lots,
         miles: p.miles, acres: p.acres, from: p.from,
       })),
     })
@@ -122,8 +127,8 @@ export default function ApprovalContext({ parcel, code, placeType, editor, onFac
             {[...ctx.precedents.slice(0, 5), ...ctx.pending.slice(0, 3).map((p) => ({ ...p, status: 'In process' }))].map((p) => (
               <li key={p.petition}>
                 <button className={`link-btn ${active === p.petition ? 'on' : ''}`} onClick={() => show(p)} disabled={!p.shape}>
-                  <strong>{p.petition}</strong> · {p.requested} · {p.status}{p.decided ? ` ${monthYear(p.decided)}` : ''}
-                  {p.miles != null && ` · ${p.miles.toFixed(1)} mi`}{p.acres ? ` · ${Number(p.acres).toFixed(1)} ac` : ''}{p.from ? ` · from ${p.from}` : ''}
+                  <strong>{p.petition}</strong> · {p.requested} · {p.status}{p.decided ? ` ${monthYear(p.decided)}` : p.year ? ` (${p.year})` : ''}
+                  {p.miles != null && ` · ${p.miles.toFixed(1)} mi`}{p.lots ? ` · ${p.lots} lots` : p.acres ? ` · ${Number(p.acres).toFixed(1)} ac` : ''}{p.from ? ` · from ${p.from}` : ''}
                 </button>
               </li>
             ))}

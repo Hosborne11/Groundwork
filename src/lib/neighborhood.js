@@ -1,5 +1,5 @@
 import * as turf from '@turf/turf'
-import { N1, APARTMENT } from '../data/charlotteUdo'
+import { RULES as N1, APARTMENT } from '../data/charlotteUdo'
 
 /*
  * Automatic neighborhood draft for a parcel.
@@ -159,7 +159,7 @@ function fillAlong(p, sgn, type, accept, startAt = 0, cuts = null) {
  */
 export function neighborhoodDraft(parcel, opts) {
   const base = N1[opts.code]
-  if (!base) return { error: 'Site plans are available for Charlotte Neighborhood 1 districts for now.' }
+  if (!base) return { error: 'Drafts are available for Charlotte Neighborhood 1 and Indian Trail residential districts for now.' }
   const std = opts.mode === 'bonus' && base.bonusTo ? N1[base.bonusTo] : base
   const conservation = opts.mode === 'conservation'
   const minLotSf = conservation ? base.minLotSf * 0.5 : std.minLotSf
@@ -198,7 +198,8 @@ export function neighborhoodDraft(parcel, opts) {
   // blocks that suit 70-90 ft lots. Narrow bounds mean more rows of streets on small-lot districts.
   const wBase = Math.min(...((opts.mix?.length ? opts.mix.map((m) => Number(m.width) || 70) : [70])))
   const dIdeal = minLotSf / Math.max(20, wBase)
-  const D_MIN = Math.max(85, Math.min(100, Math.round(dIdeal * 0.8)))
+  const needDepth = std.frontFt ? std.frontFt + (std.rearFt || 0) + 30 : 0 // towns that state front setbacks
+  const D_MIN = Math.max(85, Math.min(100, Math.round(dIdeal * 0.8)), needDepth)
   const D_MAX = Math.max(D_MIN + 15, Math.min(220, Math.round(dIdeal * 1.4)))
   // When lots must widen to meet the minimum area at this depth, every size shifts by the same
   // amount so the mix stays a mix (70/90/110 becomes 92/112/132, not 92/92/110).
@@ -243,6 +244,7 @@ export function neighborhoodDraft(parcel, opts) {
   /* ---------- apartments: garden buildings around shared parking courts ---------- */
   function apartmentDraft() {
     const A = { ...APARTMENT, ...(opts.apt || {}) }
+    if (std.maxStories) A.stories = Math.min(A.stories, std.maxStories) // height limit (Indian Trail MFR: 40 ft)
     const ang = angles[0] // the parcel's long direction
     const U = turf.feature(mapGeom(usable.geometry, (p) => rot(p, -ang)))
     const [minX, minY, maxX, maxY] = bboxOf(U)
@@ -333,10 +335,15 @@ export function neighborhoodDraft(parcel, opts) {
     if (!buildings) return { error: 'No apartment buildings fit. The buildable area may be too narrow; try the townhome scenario instead.' }
     // yield is capped by what the lots can park: scale units down to the surface spaces
     const floorUnits = specs.reduce((t, sp) => t + unitsFor(sp.L), 0)
-    const cap = Math.floor(spaces / Math.max(1, A.parkRatio))
+    const densityCap = std.sfPerUnit ? Math.floor(grossSf / std.sfPerUnit) : Infinity // land per unit (Indian Trail MFR: 3,350 sq ft)
+    const cap = Math.min(Math.floor(spaces / Math.max(1, A.parkRatio)), densityCap)
     const scale = Math.min(1, cap / Math.max(1, floorUnits))
-    for (const sp of specs) {
-      const u = Math.max(1, Math.round(unitsFor(sp.L) * scale))
+    // round down per building, then hand out the remainder, so the total never passes the cap
+    const target = Math.min(floorUnits, cap)
+    const each = specs.map((sp) => Math.max(1, Math.floor(unitsFor(sp.L) * scale)))
+    for (let i = 0, left = target - each.reduce((t, u) => t + u, 0); left > 0 && i < each.length * 4; i++, left--) each[i % each.length]++
+    for (const [k, sp] of specs.entries()) {
+      const u = each[k]
       feats.push(turf.feature(B({ type: 'Polygon', coordinates: [[[sp.x, sp.y], [sp.x + sp.L, sp.y], [sp.x + sp.L, sp.y + BD], [sp.x, sp.y + BD], [sp.x, sp.y]]] }), { kind: 'building', units: u, fill: '#8A8378' }))
       labels.push(turf.feature(B({ type: 'Point', coordinates: [sp.x + sp.L / 2, sp.y + BD / 2] }), { kind: 'area-label', label: `${u} units` }))
       unitsTotal += u
@@ -365,7 +372,7 @@ export function neighborhoodDraft(parcel, opts) {
     const pavedSf = rects.reduce((t, [x0, y0, x1, y1]) => t + (x1 - x0) * (y1 - y0), 0) // buildings + courts + drives
     return {
       lots: unitsTotal, counts: [], product: 'apartments',
-      buildings, bldgMaxFt, bldgUnits: [], stories: A.stories, spaces, spacesPerUnit: unitsTotal ? spaces / unitsTotal : 0, parkingLimited: scale < 0.95, parkRatio: A.parkRatio,
+      buildings, bldgMaxFt, bldgUnits: [], stories: A.stories, spaces, spacesPerUnit: unitsTotal ? spaces / unitsTotal : 0, parkingLimited: scale < 0.95 && Math.floor(spaces / Math.max(1, A.parkRatio)) <= densityCap, densityLimited: scale < 0.95 && densityCap < Math.floor(spaces / Math.max(1, A.parkRatio)), parkRatio: A.parkRatio,
       totalAc: grossSf / 43560, netBuildableAc: (grossSf - floodSf) / 43560, unbuildableAc: floodSf / 43560,
       roadLenFt: Math.round(roadLen), roadAc: Math.max(0, pavedSf - bldgSf) / 43560,
       conflicts: [], outside: false, noFrontage: 0,

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import * as turf from '@turf/turf'
 import { neighborhoodKml, LOT_COLORS } from '../lib/neighborhood'
 import { nearbyStreets } from '../lib/charlotte'
-import { N1, CONSERVATION_DISTRICTS, CONSERVATION_MIN_ACRES, MIXED_INCOME_MIN_ACRES, HOUSING, LOT_HOUSING, unitsFor, housingAllowed, FRONT_SETBACK_ASSUMED, MIN_HOUSE_DEPTH, upzoneOptions, TOWNHOME, APARTMENT } from '../data/charlotteUdo'
+import { tigerStreets } from '../lib/indianTrail'
+import { RULES as N1, jurisdictionOf, CONSERVATION_DISTRICTS, CONSERVATION_MIN_ACRES, MIXED_INCOME_MIN_ACRES, HOUSING, LOT_HOUSING, unitsFor, housingAllowed, FRONT_SETBACK_ASSUMED, MIN_HOUSE_DEPTH, upzoneOptions, TOWNHOME, APARTMENT } from '../data/charlotteUdo'
 import { usePlans, savePlan, getPlan, renamePlan, duplicatePlan, deletePlan } from '../lib/planStore'
 import { handlesFor, softDrag, pxToSegment, feetAlong, ringOf, polygonOf } from '../lib/editHandles'
 import ApprovalContext from './ApprovalContext'
@@ -53,6 +54,7 @@ export default function NeighborhoodCard({ parcel, parts, code: zonedCode, place
   const [scenario, setScenario] = useState(null)
   const code = scenario || zonedCode
   const std = N1[code]
+  const town = jurisdictionOf(zonedCode) // 'Charlotte' or 'Indian Trail'
   const townhomes = !!std?.townhome // N2-A scenarios draft townhome buildings on sublots
   const apartments = !!std?.apartment // N2-B scenarios draft garden apartments with surface parking
   const [open, setOpen] = useState(false)
@@ -190,7 +192,7 @@ export default function NeighborhoodCard({ parcel, parts, code: zonedCode, place
   // existing streets around the parcel, for the entrance
   useEffect(() => {
     if (!open || streets) return
-    nearbyStreets(parcel).then(setStreets).catch(() => setStreets([]))
+    ;(town === 'Charlotte' ? nearbyStreets : tigerStreets)(parcel).then(setStreets).catch(() => setStreets([]))
   }, [open, streets, parcel])
 
   // background worker
@@ -573,7 +575,8 @@ export default function NeighborhoodCard({ parcel, parts, code: zonedCode, place
   const allowed = housingAllowed(housing, ruleCode)
   const unitsOf = (c) => (housing === 'mix' ? unitsFor(mix[c.i]?.home || 'sf') : LOT_HOUSING.some((h) => h.key === housing) ? unitsFor(housing) : 1)
   const homes = plan && !plan.error ? (plan.counts.length ? plan.counts.reduce((t, c) => t + c.lots * unitsOf(c), 0) : plan.lots) : 0
-  const needDepth = FRONT_SETBACK_ASSUMED + (rules?.rearFt || 0) + MIN_HOUSE_DEPTH
+  const frontFt = rules?.frontFt ?? FRONT_SETBACK_ASSUMED // Indian Trail states it; Charlotte's varies by street, so assume 20
+  const needDepth = frontFt + (rules?.rearFt || 0) + MIN_HOUSE_DEPTH
   const ck = plan?.check || {}
   const lotWord = plan?.product === 'townhomes' ? 'sublot' : 'lot'
   const checks = plan && !plan.error ? (plan.product === 'apartments' ? [
@@ -586,7 +589,7 @@ export default function NeighborhoodCard({ parcel, parts, code: zonedCode, place
     ...(plan.product === 'townhomes' ? [{ label: 'Building size', ok: plan.bldgMaxFt <= TOWNHOME.maxBldgFt && Math.max(...plan.bldgUnits) <= thOpts.maxPerBldg, detail: `${plan.buildings} buildings, up to ${Math.max(...plan.bldgUnits)} units each; longest ${plan.bldgMaxFt} ft. Recent N2-A approvals typically condition buildings to about ${TOWNHOME.maxBldgFt} ft and 4-6 units.` }] : []),
     { label: 'Lot width', ok: ck.minWidth == null || ck.minWidth >= minWidth - 0.5, detail: ck.minWidth ? `Narrowest street frontage ${ck.minWidth} ft; needs ${minWidth} ft (cul-de-sac lots are measured at the setback)` : 'Measured on the lot mix' },
     { label: 'Street access', ok: true, detail: plan.noFrontage ? `Every ${lotWord} fronts a street (${plan.noFrontage} without frontage were left out)` : `Every ${lotWord} fronts a street with room for a driveway` },
-    { label: plan?.product === 'townhomes' ? 'Room for a unit' : 'Room for a house', ok: ck.minDepth == null || ck.minDepth >= needDepth, detail: `Shallowest ${lotWord} ${ck.minDepth ?? '—'} ft deep; a ${plan?.product === 'townhomes' ? 'unit' : 'house'} needs ${needDepth} ft for a ${FRONT_SETBACK_ASSUMED} ft front setback (assumed), the ${rules?.rearFt} ft rear setback, and a ${MIN_HOUSE_DEPTH} ft deep home` },
+    { label: plan?.product === 'townhomes' ? 'Room for a unit' : 'Room for a house', ok: ck.minDepth == null || ck.minDepth >= needDepth, detail: `Shallowest ${lotWord} ${ck.minDepth ?? '—'} ft deep; a ${plan?.product === 'townhomes' ? 'unit' : 'house'} needs ${needDepth} ft for a ${frontFt} ft front setback${rules?.frontFt ? '' : ' (assumed)'}, the ${rules?.rearFt} ft rear setback, and a ${MIN_HOUSE_DEPTH} ft deep home` },
     { label: 'Housing type', ok: allowed.ok, detail: allowed.ok === true ? `${HOUSING.find((h) => h.key === housing).label} ${housing === 'mix' ? 'types are' : /s$/.test(HOUSING.find((h) => h.key === housing).label) ? 'are' : 'is'} allowed by right in ${ruleCode}` : allowed.ok === 'limited' ? `Allowed in ${ruleCode} only on a small scale` : `Not allowed by right in ${ruleCode}` },
   ]) : []
   const passAll = !!plan && !plan.error && checks.every((c) => c.ok === true) && !plan.conflicts?.length
@@ -655,15 +658,17 @@ export default function NeighborhoodCard({ parcel, parts, code: zonedCode, place
           <select value={scenario || ''} onChange={(e) => changeScenario(e.target.value)} disabled={editing}>
             <option value="">As zoned ({zonedCode})</option>
             {upzoneOptions(zonedCode).filter((c) => !N1[c].townhome).map((c) => <option key={c} value={c}>If rezoned to {c} ({N1[c].minLotSf.toLocaleString()} sq ft lots)</option>)}
-            <option value="N2-A">If rezoned to N2-A (townhomes)</option>
-            <option value="N2-B">If rezoned to N2-B (apartments)</option>
+            {town === 'Charlotte' ? <>
+              <option value="N2-A">If rezoned to N2-A (townhomes)</option>
+              <option value="N2-B">If rezoned to N2-B (apartments)</option>
+            </> : <option value="MFR">If rezoned to MFR (apartments)</option>}
           </select>
         </label>
       )}
       {scenario && (
         <div className="scenario-banner">
           <strong>Rezoning scenario: {zonedCode} → {scenario}</strong>
-          <span>Drafted under {scenario} rules. Building this way needs a rezoning approved by City Council.</span>
+          <span>Drafted under {scenario} rules. {town === 'Charlotte' ? 'Building this way needs a rezoning approved by City Council.' : `Building this way needs a conditional rezoning approved by the ${town} Town Council.`}</span>
         </div>
       )}
       {scenario && !parts && <ApprovalContext parcel={parcel} code={scenario} placeType={placeType} editor={editor} onFactors={setApproval} />}
@@ -731,8 +736,8 @@ export default function NeighborhoodCard({ parcel, parts, code: zonedCode, place
             </p>
           )}
           {plan.product === 'townhomes' && <p className="nb-density">{plan.buildings} buildings of up to {Math.max(...plan.bldgUnits)} units · longest {plan.bldgMaxFt} ft · {plan.thStyle === 'alley' ? 'rear alley-loaded' : 'front-loaded garages'}</p>}
-          {plan.product === 'apartments' && <p className="nb-density">{plan.buildings} buildings · {plan.stories} stories · {fmt(plan.spaces)} surface spaces ({plan.spacesPerUnit.toFixed(1)} per unit){plan.parkingLimited ? ' · yield is parking-limited' : ''}</p>}
-          <p className="nb-density">{fmt(plan.density, 2)} {plan.product === 'townhomes' ? 'homes' : 'lots'} per acre{homes !== plan.lots ? ` · ${fmt(homes / plan.totalAc, 1)} homes per acre` : ''}{plan.capped ? ' · at the conservation maximum' : ''}</p>
+          {plan.product === 'apartments' && <p className="nb-density">{plan.buildings} buildings · {plan.stories} stories · {fmt(plan.spaces)} surface spaces ({plan.spacesPerUnit.toFixed(1)} per unit){plan.parkingLimited ? ' · yield is parking-limited' : ''}{plan.densityLimited ? ` · yield is set by ${ruleCode}’s density limit` : ''}</p>}
+          <p className="nb-density">{fmt(plan.density, plan.product === 'apartments' ? 1 : 2)} {plan.product ? 'homes' : 'lots'} per acre{homes !== plan.lots ? ` · ${fmt(homes / plan.totalAc, 1)} homes per acre` : ''}{plan.capped ? ' · at the conservation maximum' : ''}</p>
           {allowed.ok !== true && (
             <div className={`note ${allowed.ok === false ? 'warn' : ''}`}>
               {allowed.note}
@@ -816,7 +821,7 @@ export default function NeighborhoodCard({ parcel, parts, code: zonedCode, place
             {modes.map((m) => <button key={m.id} className={mode === m.id ? 'on' : ''} onClick={() => setMode(m.id)} aria-pressed={mode === m.id}>{m.label}</button>)}
           </div>
         )}
-        {!townhomes && !apartments && <label className="housing-pick">
+        {!townhomes && !apartments && town === 'Charlotte' && <label className="housing-pick">
           <span>Housing type</span>
           <select value={housing} onChange={(e) => setHousing(e.target.value)}>
             {HOUSING.map((h) => <option key={h.key} value={h.key}>{h.label}{housingAllowed(h.key, code).ok === false ? ' (needs rezoning)' : ''}</option>)}

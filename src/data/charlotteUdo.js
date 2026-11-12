@@ -1,3 +1,4 @@
+import { IT_RULES, IT_ORDER } from './indianTrail'
 // Charlotte Unified Development Ordinance (effective June 1, 2023).
 // Only values verified against the published text are filled in. Everything else
 // is marked as not yet loaded so the app never shows a guessed number.
@@ -126,6 +127,16 @@ export const unitsFor = (key) => HOUSING.find((h) => h.key === key)?.units || 1
 
 /** { ok: true | 'limited' | false, note } for a housing type in a district. */
 export function housingAllowed(key, code) {
+  if (IT_RULES[code]) {
+    if (IT_RULES[code].apartment) {
+      return key === 'apartments'
+        ? { ok: true, note: 'MFR is Indian Trail’s multifamily district: 3,350 sq ft of land per unit (about 13 units an acre), up to 40 ft tall.' }
+        : { ok: true, note: 'Groundwork drafts MFR scenarios as apartments.' }
+    }
+    if (key === 'sf') return { ok: true }
+    if (key === 'apartments') return { ok: false, note: `Apartments aren’t allowed in ${code}. They need a conditional rezoning to MFR.` }
+    return { ok: false, note: `Groundwork drafts Indian Trail’s ${code} district as single-family lots. Duplexes, triplexes, and attached homes depend on the town’s use table (UDO Table 500-5) and usually conditional zoning.` }
+  }
   if (N1[code]?.apartment) {
     if (key === 'apartments') return { ok: true, note: 'N2-B is Charlotte’s district for small apartment communities (multi-family stacked), up to 48 ft tall.' }
     if (key === 'townhomes') return { ok: true, note: 'N2-B also allows townhomes; pick the N2-A scenario to draft them.' }
@@ -160,13 +171,18 @@ export const MIN_HOUSE_DEPTH = 30
 // ---- Rezoning scenarios ----
 // N1 districts from lowest to highest intensity; an upzoning scenario offers the ones after the current district.
 export const N1_ORDER = ['N1-A', 'N1-B', 'N1-C', 'N1-D', 'N1-E', 'N1-F']
-export const upzoneOptions = (code) => N1_ORDER.slice(N1_ORDER.indexOf(code) + 1)
+export const upzoneOptions = (code) => {
+  const order = IT_ORDER.includes(code) ? IT_ORDER : N1_ORDER
+  const i = order.indexOf(code)
+  return i < 0 ? [] : order.slice(i + 1)
+}
 
 /**
  * How a district fits the 2040 Policy Map place type: staff weigh this heavily in rezoning reviews.
  * Returns { fit: 'consistent' | 'inconsistent' | 'unknown', note }.
  */
 export function policyFit(code, placeName) {
+  if (IT_RULES[code]) return { fit: 'unknown', note: 'Indian Trail weighs rezonings against its Comprehensive Plan (the “Indian Trail Framework Plan”), which isn’t published as map data, so Groundwork doesn’t check plan consistency here.' }
   if (!placeName) return { fit: 'unknown', note: 'The 2040 Policy Map place type for this parcel isn’t loaded.' }
   const family = code.startsWith('N1') ? 'Neighborhood 1' : code.startsWith('N2') ? 'Neighborhood 2' : null
   if (family && placeName.toLowerCase().startsWith(family.toLowerCase())) {
@@ -204,3 +220,8 @@ export const APARTMENT = {
   efficiency: 0.85, // share of floor area that is units rather than halls and stairs
   parkRatio: 1.5,   // surface spaces per unit; the practical limit on garden-apartment yield
 }
+
+// ---- One rules registry for every town Groundwork drafts in ----
+// Charlotte's N1/N2 districts plus Indian Trail's; district names don't collide.
+export const RULES = { ...N1, ...IT_RULES }
+export const jurisdictionOf = (code) => RULES[code]?.jurisdiction || 'Charlotte'
