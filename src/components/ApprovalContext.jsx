@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react'
 import * as turf from '@turf/turf'
 import { approvalContext } from '../lib/charlotte'
 import { itApprovalContext } from '../lib/indianTrail'
-import { concordApprovalContext, monroeApprovalContext, matthewsApprovalContext, mintHillApprovalContext, huntersvilleApprovalContext } from '../lib/towns'
+import { concordApprovalContext, monroeApprovalContext, matthewsApprovalContext, mintHillApprovalContext, huntersvilleApprovalContext, pinevilleApprovalContext } from '../lib/towns'
 import { districtLabel } from '../data/towns'
 
 // each town's own lookup; Charlotte uses its petition history
-const LOOKUP = { 'Indian Trail': itApprovalContext, Concord: concordApprovalContext, Monroe: monroeApprovalContext, Matthews: matthewsApprovalContext, 'Mint Hill': mintHillApprovalContext, Huntersville: huntersvilleApprovalContext }
+const LOOKUP = { 'Indian Trail': itApprovalContext, Concord: concordApprovalContext, Monroe: monroeApprovalContext, Matthews: matthewsApprovalContext, 'Mint Hill': mintHillApprovalContext, Huntersville: huntersvilleApprovalContext, Pineville: pinevilleApprovalContext }
 import { policyFit, jurisdictionOf } from '../data/charlotteUdo'
 
 const monthYear = (d) => d?.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
@@ -67,7 +67,11 @@ export default function ApprovalContext({ parcel, code: key, placeType, editor, 
       {
         tone: ctx.precedents.some((p) => p.status === 'Approved') || ctx.conditionalCounts?.within2 > 0 ? 'good' : 'neutral',
         title: 'Nearby precedents',
-        text: ctx.recordNote
+        text: ctx.zonedAreas
+          ? (ctx.precedents.length
+            ? `${plural(ctx.precedents.length, 'area')} zoned ${code} within 5 miles on Mecklenburg County’s map, about ${Math.round(ctx.precedents.reduce((t, p) => t + (p.acres || 0), 0)).toLocaleString()} acres; ${within2.length ? `${within2.length} within 2 miles` : 'none within 2 miles'}. The county map doesn’t record rezoning cases, so this shows where the district already exists, not approval history.`
+            : `No areas zoned ${code} within 5 miles on Mecklenburg County’s map.`)
+          : ctx.recordNote
           ? (ctx.precedents.length
             ? `${plural(ctx.precedents.length, 'rezoning')} to ${code} within 5 miles in ${poss(ctx.town)} records (${tally(ctx.precedents)})${(() => { const y = Math.max(...ctx.precedents.map((p) => p.year || 0)); return y ? `, the most recent from ${y}` : '' })()}; ${within2.length ? `${within2.length} within 2 miles` : 'none within 2 miles'}.`
             : `No rezonings to ${code} within 5 miles in ${poss(ctx.town)} records.`)

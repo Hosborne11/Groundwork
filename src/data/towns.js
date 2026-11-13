@@ -80,9 +80,24 @@ export const HUNTERSVILLE_RULES = {
 }
 export const HUNTERSVILLE_ORDER = ['HV:R', 'TR', 'NR']
 
-export const TOWN_RULES = { ...CONCORD_RULES, ...MONROE_RULES, ...MATTHEWS_RULES, ...MINT_HILL_RULES, ...HUNTERSVILLE_RULES }
-export const TOWN_ORDERS = { Concord: CONCORD_ORDER, Monroe: MONROE_ORDER, Matthews: MATTHEWS_ORDER, 'Mint Hill': MINT_HILL_ORDER, Huntersville: HUNTERSVILLE_ORDER }
-export const TOWN_SOURCES = { Concord: CONCORD_SOURCE, Monroe: MONROE_SOURCE, Matthews: MATTHEWS_SOURCE, 'Mint Hill': MINT_HILL_SOURCE, Huntersville: HUNTERSVILLE_SOURCE }
-export const TOWN_PLANS = { Concord: '2030 Land Use Plan', Monroe: 'Forward Monroe plan', Matthews: 'Envision Matthews land use plan', 'Mint Hill': 'Comprehensive Plan and Future Land Use map', Huntersville: '2040 Community Plan' }
+// Town of Pineville Zoning Ordinance (updated March 10, 2026), Section 6.6 Applicable Dimensional
+// Requirements: 6.6.1 R-44, 6.6.2 R-12, 6.6.3 R-7, 6.6.4 R-MF (single-family and master-planned
+// apartments at 10 units/acre). RMX has no Section 6.6 table (it's conditional); its values are the
+// conditions on the approved 2022 Miller Farm RMX plan. Keys carry "PV:" since Matthews also has R-12.
+export const PINEVILLE_SOURCE = 'Pineville Zoning Ordinance §6.6 (updated March 2026)'
+const pv = { jurisdiction: 'Pineville', bonusTo: null, heightFt: 40 }
+export const PINEVILLE_RULES = {
+  'PV:R-44': { ...pv, label: 'R-44', minLotSf: 44000, minWidthFt: 100, frontFt: 20, sideFt: 12, rearFt: 40 },
+  'PV:R-12': { ...pv, label: 'R-12', minLotSf: 12000, minWidthFt: 70, frontFt: 20, sideFt: 10, rearFt: 40 },
+  'PV:R-7': { ...pv, label: 'R-7', minLotSf: 7000, minWidthFt: 50, frontFt: 15, sideFt: 5, rearFt: 30 },
+  'PV:R-MF': { ...pv, label: 'R-MF', minLotSf: 7000, minWidthFt: 50, frontFt: 20, sideFt: 5, rearFt: 30, apt: { density: 10, stories: 3 } },
+  'PV:RMX': { ...pv, label: 'RMX', minLotSf: 4920, minWidthFt: 41, frontFt: 10, sideFt: 5, rearFt: 10, conditionalOnly: true, typical: 'Conditions on the approved 2022 Miller Farm RMX plan' },
+}
+export const PINEVILLE_ORDER = ['PV:R-44', 'PV:R-12', 'PV:R-7', 'PV:R-MF', 'PV:RMX']
+
+export const TOWN_RULES = { ...CONCORD_RULES, ...MONROE_RULES, ...MATTHEWS_RULES, ...MINT_HILL_RULES, ...HUNTERSVILLE_RULES, ...PINEVILLE_RULES }
+export const TOWN_ORDERS = { Concord: CONCORD_ORDER, Monroe: MONROE_ORDER, Matthews: MATTHEWS_ORDER, 'Mint Hill': MINT_HILL_ORDER, Huntersville: HUNTERSVILLE_ORDER, Pineville: PINEVILLE_ORDER }
+export const TOWN_SOURCES = { Concord: CONCORD_SOURCE, Monroe: MONROE_SOURCE, Matthews: MATTHEWS_SOURCE, 'Mint Hill': MINT_HILL_SOURCE, Huntersville: HUNTERSVILLE_SOURCE, Pineville: PINEVILLE_SOURCE }
+export const TOWN_PLANS = { Concord: '2030 Land Use Plan', Monroe: 'Forward Monroe plan', Matthews: 'Envision Matthews land use plan', 'Mint Hill': 'Comprehensive Plan and Future Land Use map', Huntersville: '2040 Community Plan', Pineville: 'Comprehensive Plan and Residential Overlay District' }
 // what a district is called on screen (Mint Hill's keys carry a town prefix)
 export const districtLabel = (code) => TOWN_RULES[code]?.label || code

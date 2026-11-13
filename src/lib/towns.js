@@ -128,7 +128,8 @@ export async function meckTownZoning(parcel) {
     const p = parseCode(mhAttrs.ZoneDes)
     return { town: 'Mint Hill', ...p, key: p.base === 'R' ? 'MH:R' : null, petition: mhAttrs.Petition || null }
   }
-  return huntersvilleZoning(parcel).catch(() => null)
+  const hv = await huntersvilleZoning(parcel).catch(() => null)
+  return hv || meckCountyZoning(parcel).catch(() => null)
 }
 
 /** Matthews: approved conditional rezonings to the scenario district (R-x(CD), or R-VS areas). */
@@ -255,4 +256,38 @@ export async function huntersvilleApprovalContext(parcel, key) {
   const neighbors = neighborsFrom(ok(zones)?.features || [], 'ZONE_DES', parcel)
   const intense = neighbors.filter((d) => /^(NR|TND|TOD|NC|TC|CB|HC|CI|SP|VS)/.test(d))
   return { code, town: 'Huntersville', precedents: near, cityCounts: {}, pending: [], recordNote, frontage, nearestRoad, neighbors, intenseNeighbors: intense, mapOnly: false, failed: [arch, cur, roads, zones].filter((r) => !ok(r)).length }
+}
+
+/* ---------- Mecklenburg County's towns zoning layer (Pineville; Cornelius and Davidson later) ---------- */
+const MECK_TOWNS = 'https://meckgis.mecklenburgcountync.gov/server/rest/services/UnincorporatedCountyandTownsZoning/FeatureServer/0'
+const MECK_PREFIX = { PINEVILLE: ['Pineville', 'PV:'] }
+
+/** Zoning for a parcel in a town covered only by the county's layer. */
+export async function meckCountyZoning(parcel) {
+  const r = await getJSON(`${MECK_TOWNS}/query`, { ...atParcel(parcel), outFields: 'zone_des,munic' })
+  const a = r?.features?.[0]?.attributes
+  const town = MECK_PREFIX[String(a?.munic || '').trim().toUpperCase()]
+  if (!a?.zone_des || !town) return null
+  const p = parseCode(a.zone_des)
+  return { town: town[0], ...p, key: `${town[1]}${p.base}` }
+}
+
+/** Pineville: areas carrying the scenario district within 5 miles (the county layer has no case data). */
+export async function pinevilleApprovalContext(parcel, key) {
+  const code = key.replace(/^PV:/, '')
+  const c = turf.pointOnFeature(parcel).geometry.coordinates
+  const [near, roads, zones] = await Promise.allSettled([
+    getJSON(`${MECK_TOWNS}/query`, { ...nearPoint(c), where: `munic = 'PINEVILLE' AND zone_des LIKE '${code}%'`, outFields: 'zone_des', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0002, f: 'json' }),
+    tigerStreets(parcel, 600),
+    getJSON(`${MECK_TOWNS}/query`, { geometry: padded(parcel, 100), geometryType: 'esriGeometryEnvelope', inSR: 4326, spatialRel: 'esriSpatialRelIntersects', outFields: 'zone_des', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0001, f: 'json' }),
+  ])
+  const precedents = (ok(near)?.features || []).filter((f) => f.geometry?.rings?.length && parseCode(f.attributes.zone_des).base === code).map((f, i) => {
+    const shape = turf.polygon(f.geometry.rings)
+    return { petition: `Area zoned ${String(f.attributes.zone_des).trim()}`, requested: String(f.attributes.zone_des).trim(), status: 'On the map', decided: null, year: null,
+      acres: turf.area(shape) / 4046.86, lots: null, from: null, miles: turf.distance(c, turf.pointOnFeature(shape), { units: 'miles' }), shape }
+  }).filter((p) => p.acres >= 1 && !turf.booleanPointInPolygon(turf.point(c), p.shape)).sort((a, b) => a.miles - b.miles)
+  const { frontage, nearestRoad } = frontageFrom(parcel, ok(roads) || [])
+  const neighbors = neighborsFrom(ok(zones)?.features || [], 'zone_des', parcel)
+  const intense = neighbors.filter((d) => /^(R-7|R-MF|RMX|DC|B-|O-|G-I)/.test(d))
+  return { code: key, town: 'Pineville', precedents, cityCounts: {}, pending: [], frontage, nearestRoad, neighbors, intenseNeighbors: intense, mapOnly: true, zonedAreas: true, failed: [near, roads, zones].filter((r) => !ok(r)).length }
 }
