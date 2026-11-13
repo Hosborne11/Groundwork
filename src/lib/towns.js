@@ -289,7 +289,7 @@ export async function pinevilleApprovalContext(parcel, key) {
   const { frontage, nearestRoad } = frontageFrom(parcel, ok(roads) || [])
   const neighbors = neighborsFrom(ok(zones)?.features || [], 'zone_des', parcel)
   const intense = neighbors.filter((d) => /^(R-7|R-MF|RMX|DC|B-|O-|G-I)/.test(d))
-  return { code: key, town: 'Pineville', precedents, cityCounts: {}, pending: [], frontage, nearestRoad, neighbors, intenseNeighbors: intense, mapOnly: true, zonedAreas: true, failed: [near, roads, zones].filter((r) => !ok(r)).length }
+  return { code: key, town: 'Pineville', mapName: 'Mecklenburg County’s map', precedents, cityCounts: {}, pending: [], frontage, nearestRoad, neighbors, intenseNeighbors: intense, mapOnly: true, zonedAreas: true, failed: [near, roads, zones].filter((r) => !ok(r)).length }
 }
 
 /* ---------- Kannapolis (Cabarrus County's town zoning layer 3) ---------- */
@@ -324,4 +324,27 @@ export async function kannapolisApprovalContext(parcel, key) {
   const neighbors = neighborsFrom(ok(zones)?.features || [], 'ZONINGCODE', parcel)
   const intense = neighbors.filter((d) => /^(R6|R7|R8|R18|PD|C|MX|O|I)/.test(d))
   return { code: key, town: 'Kannapolis', precedents, cityCounts: {}, pending: [], frontage, nearestRoad, neighbors, intenseNeighbors: intense, mapOnly: true, failed: [near, roads, zones].filter((r) => !ok(r)).length }
+}
+
+/* ---------- Harrisburg (Cabarrus County's town zoning layer 2) ---------- */
+const HARRISBURG_ZONING = '/gis/cabarrus/OpenData/Zoning_By_Municipalities/MapServer/2'
+
+/** Harrisburg: areas zoned the scenario district nearby (the layer notes case numbers where recorded). */
+export async function harrisburgApprovalContext(parcel, key) {
+  const code = key.replace(/^HB:/, '')
+  const c = turf.pointOnFeature(parcel).geometry.coordinates
+  const [near, roads, zones] = await Promise.allSettled([
+    getJSON(`${HARRISBURG_ZONING}/query`, { ...nearPoint(c), where: `ZONINGCODE = '${code}'`, outFields: 'ZONINGCODE,CASE_NUMBE', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0002, f: 'json' }),
+    tigerStreets(parcel, 600),
+    getJSON(`${HARRISBURG_ZONING}/query`, { geometry: padded(parcel, 100), geometryType: 'esriGeometryEnvelope', inSR: 4326, spatialRel: 'esriSpatialRelIntersects', outFields: 'ZONINGCODE', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0001, f: 'json' }),
+  ])
+  const precedents = (ok(near)?.features || []).filter((f) => f.geometry?.rings?.length).map((f) => {
+    const shape = turf.polygon(f.geometry.rings), id = String(f.attributes.CASE_NUMBE || '').trim()
+    return { petition: id || `Area zoned ${code}`, requested: code, status: id ? 'Rezoned' : 'On the map', decided: null, year: yearOf(id),
+      acres: turf.area(shape) / 4046.86, lots: null, from: null, miles: turf.distance(c, turf.pointOnFeature(shape), { units: 'miles' }), shape }
+  }).filter((p) => p.acres >= 1 && !turf.booleanPointInPolygon(turf.point(c), p.shape)).sort((a, b) => a.miles - b.miles)
+  const { frontage, nearestRoad } = frontageFrom(parcel, ok(roads) || [])
+  const neighbors = neighborsFrom(ok(zones)?.features || [], 'ZONINGCODE', parcel)
+  const intense = neighbors.filter((d) => /^(RM|RH|PUD|NC|EC|C|MX|I)/.test(d))
+  return { code: key, town: 'Harrisburg', mapName: 'Harrisburg’s zoning map', precedents, cityCounts: {}, pending: [], frontage, nearestRoad, neighbors, intenseNeighbors: intense, mapOnly: true, zonedAreas: true, failed: [near, roads, zones].filter((r) => !ok(r)).length }
 }

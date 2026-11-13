@@ -115,9 +115,23 @@ export const KANNAPOLIS_RULES = {
 }
 export const KANNAPOLIS_ORDER = ['KN:R1', 'KN:R2', 'KN:R4', 'KN:R6', 'KN:R7', 'KN:R8', 'KN:R18']
 
-export const TOWN_RULES = { ...CONCORD_RULES, ...MONROE_RULES, ...MATTHEWS_RULES, ...MINT_HILL_RULES, ...HUNTERSVILLE_RULES, ...PINEVILLE_RULES, ...KANNAPOLIS_RULES }
-export const TOWN_ORDERS = { Concord: CONCORD_ORDER, Monroe: MONROE_ORDER, Matthews: MATTHEWS_ORDER, 'Mint Hill': MINT_HILL_ORDER, Huntersville: HUNTERSVILLE_ORDER, Pineville: PINEVILLE_ORDER, Kannapolis: KANNAPOLIS_ORDER }
-export const TOWN_SOURCES = { Concord: CONCORD_SOURCE, Monroe: MONROE_SOURCE, Matthews: MATTHEWS_SOURCE, 'Mint Hill': MINT_HILL_SOURCE, Huntersville: HUNTERSVILLE_SOURCE, Pineville: PINEVILLE_SOURCE, Kannapolis: KANNAPOLIS_SOURCE }
-export const TOWN_PLANS = { Concord: '2030 Land Use Plan', Monroe: 'Forward Monroe plan', Matthews: 'Envision Matthews land use plan', 'Mint Hill': 'Comprehensive Plan and Future Land Use map', Huntersville: '2040 Community Plan', Pineville: 'Comprehensive Plan and Residential Overlay District', Kannapolis: 'Comprehensive Plan' }
+// Town of Harrisburg UDO §140.02.01, Tables 140.02.01-2 to -5 (RE, RL, RM, RH), conventional
+// single-family development. Each table gives one gross density range across development types;
+// conventional subdivisions use the low end (the high end needs the conservation or planned
+// layouts with more open space). Keys carry "HB:" since Concord also has RE and RL.
+export const HARRISBURG_SOURCE = 'Harrisburg UDO Tables 140.02.01-2 to -5 (conventional development; low end of each density range)'
+const hb = { jurisdiction: 'Harrisburg', bonusTo: null, heightFt: 35 }
+export const HARRISBURG_RULES = {
+  'HB:RE': { ...hb, label: 'RE', minLotSf: 43560, minWidthFt: 150, maxDensity: 0.8, frontFt: 50, sideFt: 20, rearFt: 30, densityNote: 'up to 0.8 units per acre conventional (2.0 as a conservation subdivision)' },
+  'HB:RL': { ...hb, label: 'RL', minLotSf: 25000, minWidthFt: 125, maxDensity: 1.0, frontFt: 35, sideFt: 15, rearFt: 30, densityNote: 'up to 1.0 unit per acre conventional (2.0 as a conservation subdivision)' },
+  'HB:RM': { ...hb, label: 'RM', minLotSf: 15000, minWidthFt: 75, maxDensity: 2.0, frontFt: 25, sideFt: 10, rearFt: 25, densityNote: 'up to 2.0 units per acre conventional (3.0 as a conservation subdivision)' },
+  'HB:RH': { ...hb, label: 'RH', minLotSf: 9500, minWidthFt: 55, maxDensity: 3.0, frontFt: 25, sideFt: 10, rearFt: 25, densityNote: 'up to 3.0 units per acre conventional (5.0 as a planned development)' },
+}
+export const HARRISBURG_ORDER = ['HB:RE', 'HB:RL', 'HB:RM', 'HB:RH']
+
+export const TOWN_RULES = { ...CONCORD_RULES, ...MONROE_RULES, ...MATTHEWS_RULES, ...MINT_HILL_RULES, ...HUNTERSVILLE_RULES, ...PINEVILLE_RULES, ...KANNAPOLIS_RULES, ...HARRISBURG_RULES }
+export const TOWN_ORDERS = { Concord: CONCORD_ORDER, Monroe: MONROE_ORDER, Matthews: MATTHEWS_ORDER, 'Mint Hill': MINT_HILL_ORDER, Huntersville: HUNTERSVILLE_ORDER, Pineville: PINEVILLE_ORDER, Kannapolis: KANNAPOLIS_ORDER, Harrisburg: HARRISBURG_ORDER }
+export const TOWN_SOURCES = { Concord: CONCORD_SOURCE, Monroe: MONROE_SOURCE, Matthews: MATTHEWS_SOURCE, 'Mint Hill': MINT_HILL_SOURCE, Huntersville: HUNTERSVILLE_SOURCE, Pineville: PINEVILLE_SOURCE, Kannapolis: KANNAPOLIS_SOURCE, Harrisburg: HARRISBURG_SOURCE }
+export const TOWN_PLANS = { Concord: '2030 Land Use Plan', Monroe: 'Forward Monroe plan', Matthews: 'Envision Matthews land use plan', 'Mint Hill': 'Comprehensive Plan and Future Land Use map', Huntersville: '2040 Community Plan', Pineville: 'Comprehensive Plan and Residential Overlay District', Kannapolis: 'Comprehensive Plan', Harrisburg: 'Land Use Plan' }
 // what a district is called on screen (Mint Hill's keys carry a town prefix)
 export const districtLabel = (code) => TOWN_RULES[code]?.label || code
