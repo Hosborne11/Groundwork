@@ -200,7 +200,8 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
   const harrKey = harrZone && TOWN_RULES[`HB:${harrZone}`] ? `HB:${harrZone}` : null
   const town = isUnion && uZoning.status === 'done'
     ? (uZoning.town === 'Indian Trail' && IT_RULES[uZoning.code] && !IT_RULES[uZoning.code].apartment ? { name: 'Indian Trail', code: uZoning.code, rule: IT_RULES[uZoning.code], source: IT_SOURCE, kind: 'single-family' }
-      : uZoning.town === 'Monroe' && MONROE_RULES[uZoning.code] ? { name: 'Monroe', code: uZoning.code, rule: MONROE_RULES[uZoning.code], source: TOWN_SOURCES.Monroe, kind: 'residential' } : null)
+      : uZoning.town === 'Monroe' && MONROE_RULES[uZoning.code] ? { name: 'Monroe', code: uZoning.code, rule: MONROE_RULES[uZoning.code], source: TOWN_SOURCES.Monroe, kind: 'residential' }
+      : uZoning.town === 'Waxhaw' && TOWN_RULES[`WX:${uZoning.code}`] ? { name: 'Waxhaw', code: `WX:${uZoning.code}`, rule: TOWN_RULES[`WX:${uZoning.code}`], source: TOWN_SOURCES.Waxhaw, kind: 'residential' } : null)
     : concordZone && CONCORD_RULES[concordZone] ? { name: 'Concord', code: concordZone, rule: CONCORD_RULES[concordZone], source: TOWN_SOURCES.Concord, kind: 'residential' }
     : kannKey ? { name: 'Kannapolis', code: kannKey, rule: TOWN_RULES[kannKey], source: TOWN_SOURCES.Kannapolis, kind: 'residential' }
     : harrKey ? { name: 'Harrisburg', code: harrKey, rule: TOWN_RULES[harrKey], source: TOWN_SOURCES.Harrisburg, kind: 'residential' }

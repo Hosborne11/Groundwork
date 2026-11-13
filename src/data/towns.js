@@ -129,9 +129,22 @@ export const HARRISBURG_RULES = {
 }
 export const HARRISBURG_ORDER = ['HB:RE', 'HB:RL', 'HB:RM', 'HB:RH']
 
-export const TOWN_RULES = { ...CONCORD_RULES, ...MONROE_RULES, ...MATTHEWS_RULES, ...MINT_HILL_RULES, ...HUNTERSVILLE_RULES, ...PINEVILLE_RULES, ...KANNAPOLIS_RULES, ...HARRISBURG_RULES }
-export const TOWN_ORDERS = { Concord: CONCORD_ORDER, Monroe: MONROE_ORDER, Matthews: MATTHEWS_ORDER, 'Mint Hill': MINT_HILL_ORDER, Huntersville: HUNTERSVILLE_ORDER, Pineville: PINEVILLE_ORDER, Kannapolis: KANNAPOLIS_ORDER, Harrisburg: HARRISBURG_ORDER }
-export const TOWN_SOURCES = { Concord: CONCORD_SOURCE, Monroe: MONROE_SOURCE, Matthews: MATTHEWS_SOURCE, 'Mint Hill': MINT_HILL_SOURCE, Huntersville: HUNTERSVILLE_SOURCE, Pineville: PINEVILLE_SOURCE, Kannapolis: KANNAPOLIS_SOURCE, Harrisburg: HARRISBURG_SOURCE }
-export const TOWN_PLANS = { Concord: '2030 Land Use Plan', Monroe: 'Forward Monroe plan', Matthews: 'Envision Matthews land use plan', 'Mint Hill': 'Comprehensive Plan and Future Land Use map', Huntersville: '2040 Community Plan', Pineville: 'Comprehensive Plan and Residential Overlay District', Kannapolis: 'Comprehensive Plan', Harrisburg: 'Land Use Plan' }
+// Town of Waxhaw Land Development Code (June 2026), Section 4.1 district pages (R-1 to R-4): minimum
+// lot width and depth plus a units-per-acre cap for major subdivisions (standard values; cluster and
+// conservation designs allow more). Union County's map writes these as R1-R4; keys carry "WX:".
+export const WAXHAW_SOURCE = 'Waxhaw Land Development Code §4.1 (June 2026; standard, non-cluster values)'
+const wx = { jurisdiction: 'Waxhaw', bonusTo: null, heightFt: 45 }
+export const WAXHAW_RULES = {
+  'WX:R1': { ...wx, label: 'R-1', minLotSf: 100 * 200, minWidthFt: 100, maxDensity: 1, frontFt: 30, sideFt: 15, rearFt: 30 },
+  'WX:R2': { ...wx, label: 'R-2', minLotSf: 90 * 160, minWidthFt: 90, maxDensity: 2, frontFt: 25, sideFt: 12, rearFt: 30 },
+  'WX:R3': { ...wx, label: 'R-3', minLotSf: 80 * 140, minWidthFt: 80, maxDensity: 3, frontFt: 20, sideFt: 10, rearFt: 30, densityNote: 'up to 3 units per acre (3.5 as a cluster subdivision)' },
+  'WX:R4': { ...wx, label: 'R-4', minLotSf: 60 * 105, minWidthFt: 60, maxDensity: 4, frontFt: 15, sideFt: 7.5, rearFt: 20, densityNote: 'up to 4 units per acre (5 as a cluster subdivision)' },
+}
+export const WAXHAW_ORDER = ['WX:R1', 'WX:R2', 'WX:R3', 'WX:R4']
+
+export const TOWN_RULES = { ...CONCORD_RULES, ...MONROE_RULES, ...MATTHEWS_RULES, ...MINT_HILL_RULES, ...HUNTERSVILLE_RULES, ...PINEVILLE_RULES, ...KANNAPOLIS_RULES, ...HARRISBURG_RULES, ...WAXHAW_RULES }
+export const TOWN_ORDERS = { Concord: CONCORD_ORDER, Monroe: MONROE_ORDER, Matthews: MATTHEWS_ORDER, 'Mint Hill': MINT_HILL_ORDER, Huntersville: HUNTERSVILLE_ORDER, Pineville: PINEVILLE_ORDER, Kannapolis: KANNAPOLIS_ORDER, Harrisburg: HARRISBURG_ORDER, Waxhaw: WAXHAW_ORDER }
+export const TOWN_SOURCES = { Concord: CONCORD_SOURCE, Monroe: MONROE_SOURCE, Matthews: MATTHEWS_SOURCE, 'Mint Hill': MINT_HILL_SOURCE, Huntersville: HUNTERSVILLE_SOURCE, Pineville: PINEVILLE_SOURCE, Kannapolis: KANNAPOLIS_SOURCE, Harrisburg: HARRISBURG_SOURCE, Waxhaw: WAXHAW_SOURCE }
+export const TOWN_PLANS = { Concord: '2030 Land Use Plan', Monroe: 'Forward Monroe plan', Matthews: 'Envision Matthews land use plan', 'Mint Hill': 'Comprehensive Plan and Future Land Use map', Huntersville: '2040 Community Plan', Pineville: 'Comprehensive Plan and Residential Overlay District', Kannapolis: 'Comprehensive Plan', Harrisburg: 'Land Use Plan', Waxhaw: 'Comprehensive Plan' }
 // what a district is called on screen (Mint Hill's keys carry a town prefix)
 export const districtLabel = (code) => TOWN_RULES[code]?.label || code

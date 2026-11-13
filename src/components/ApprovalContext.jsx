@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react'
 import * as turf from '@turf/turf'
 import { approvalContext } from '../lib/charlotte'
 import { itApprovalContext } from '../lib/indianTrail'
-import { concordApprovalContext, monroeApprovalContext, matthewsApprovalContext, mintHillApprovalContext, huntersvilleApprovalContext, pinevilleApprovalContext, kannapolisApprovalContext, harrisburgApprovalContext } from '../lib/towns'
+import { concordApprovalContext, monroeApprovalContext, matthewsApprovalContext, mintHillApprovalContext, huntersvilleApprovalContext, pinevilleApprovalContext, kannapolisApprovalContext, harrisburgApprovalContext, waxhawApprovalContext } from '../lib/towns'
 import { districtLabel } from '../data/towns'
 
 // each town's own lookup; Charlotte uses its petition history
-const LOOKUP = { 'Indian Trail': itApprovalContext, Concord: concordApprovalContext, Monroe: monroeApprovalContext, Matthews: matthewsApprovalContext, 'Mint Hill': mintHillApprovalContext, Huntersville: huntersvilleApprovalContext, Pineville: pinevilleApprovalContext, Kannapolis: kannapolisApprovalContext, Harrisburg: harrisburgApprovalContext }
+const LOOKUP = { 'Indian Trail': itApprovalContext, Concord: concordApprovalContext, Monroe: monroeApprovalContext, Matthews: matthewsApprovalContext, 'Mint Hill': mintHillApprovalContext, Huntersville: huntersvilleApprovalContext, Pineville: pinevilleApprovalContext, Kannapolis: kannapolisApprovalContext, Harrisburg: harrisburgApprovalContext, Waxhaw: waxhawApprovalContext }
 import { policyFit, jurisdictionOf } from '../data/charlotteUdo'
 
 const monthYear = (d) => d?.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
@@ -67,7 +67,9 @@ export default function ApprovalContext({ parcel, code: key, placeType, editor, 
       {
         tone: ctx.precedents.some((p) => p.status === 'Approved') || ctx.conditionalCounts?.within2 > 0 ? 'good' : 'neutral',
         title: 'Nearby precedents',
-        text: ctx.zonedAreas
+        text: ctx.zonedParcels
+          ? `${ctx.zonedParcels.within5.toLocaleString()} parcels within 5 miles are already zoned ${code} on ${poss(ctx.town)} map, about ${Math.round(ctx.zonedParcels.acres5).toLocaleString()} acres; ${ctx.zonedParcels.within2.toLocaleString()} within 2 miles. The map doesn’t record rezoning cases, so this shows how established the district is nearby, not approval history.`
+          : ctx.zonedAreas
           ? (ctx.precedents.length
             ? `${plural(ctx.precedents.length, 'area')} zoned ${code} within 5 miles on ${ctx.mapName || 'the zoning map'}, about ${Math.round(ctx.precedents.reduce((t, p) => t + (p.acres || 0), 0)).toLocaleString()} acres; ${within2.length ? `${within2.length} within 2 miles` : 'none within 2 miles'}. The map doesn’t record rezoning outcomes, so this shows where the district already exists, not approval history.`
             : `No areas zoned ${code} within 5 miles on ${ctx.mapName || 'the zoning map'}.`)

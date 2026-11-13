@@ -348,3 +348,26 @@ export async function harrisburgApprovalContext(parcel, key) {
   const intense = neighbors.filter((d) => /^(RM|RH|PUD|NC|EC|C|MX|I)/.test(d))
   return { code: key, town: 'Harrisburg', mapName: 'Harrisburg’s zoning map', precedents, cityCounts: {}, pending: [], frontage, nearestRoad, neighbors, intenseNeighbors: intense, mapOnly: true, zonedAreas: true, failed: [near, roads, zones].filter((r) => !ok(r)).length }
 }
+
+/* ---------- Waxhaw (Union County town layer 183; per parcel, no case data) ---------- */
+const WAXHAW_ZONING = '/gis/union/UNION_COUNTY_LAYERS/MapServer/183'
+
+/** Waxhaw: parcels already zoned the scenario district nearby (counts and acreage from the server). */
+export async function waxhawApprovalContext(parcel, key) {
+  const code = key.replace(/^WX:/, '')
+  const c = turf.pointOnFeature(parcel).geometry.coordinates
+  const stats = (miles) => getJSON(`${WAXHAW_ZONING}/query`, {
+    ...nearPoint(c), distance: miles, where: `Zoning = '${code}'`,
+    outStatistics: JSON.stringify([{ statisticType: 'count', onStatisticField: 'OBJECTID', outStatisticFieldName: 'n' }, { statisticType: 'sum', onStatisticField: 'SHAPE.STArea()', outStatisticFieldName: 'sf' }]), f: 'json',
+  })
+  const [s2, s5, roads, zones] = await Promise.allSettled([
+    stats(2), stats(5), tigerStreets(parcel, 600),
+    getJSON(`${WAXHAW_ZONING}/query`, { geometry: padded(parcel, 100), geometryType: 'esriGeometryEnvelope', inSR: 4326, spatialRel: 'esriSpatialRelIntersects', outFields: 'Zoning', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0001, f: 'json' }),
+  ])
+  const row = (r) => ok(r)?.features?.[0]?.attributes
+  const zoned = { within2: row(s2)?.n || 0, within5: row(s5)?.n || 0, acres5: (row(s5)?.sf || 0) / 43560 }
+  const { frontage, nearestRoad } = frontageFrom(parcel, ok(roads) || [])
+  const neighbors = neighborsFrom(ok(zones)?.features || [], 'Zoning', parcel)
+  const intense = neighbors.filter((d) => /^(R4|N|NC|MS|TC|CC|EC)$/.test(d))
+  return { code: key, town: 'Waxhaw', precedents: [], cityCounts: {}, pending: [], frontage, nearestRoad, neighbors, intenseNeighbors: intense, mapOnly: true, zonedParcels: zoned, failed: [s5, roads, zones].filter((r) => !ok(r)).length }
+}
