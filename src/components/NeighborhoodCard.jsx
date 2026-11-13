@@ -663,7 +663,7 @@ export default function NeighborhoodCard({ parcel, parts, code: zonedCode, place
           <span>Zoning</span>
           <select value={scenario || ''} onChange={(e) => changeScenario(e.target.value)} disabled={editing}>
             <option value="">As zoned ({zonedLabel})</option>
-            {upzoneOptions(zonedCode).filter((c) => !N1[c].townhome).map((c) => <option key={c} value={c}>If rezoned to {dl(c)} ({N1[c].minLotSf.toLocaleString()} sq ft lots{N1[c].typical ? ', typical conditions' : ''})</option>)}
+            {upzoneOptions(zonedCode).filter((c) => !N1[c].townhome).map((c) => <option key={c} value={c}>If rezoned to {dl(c)} ({N1[c].noMinLot ? `${N1[c].minWidthFt} ft lots, up to ${N1[c].maxDensity}/ac` : `${N1[c].minLotSf.toLocaleString()} sq ft lots`}{N1[c].typical ? ', typical conditions' : ''})</option>)}
             {town === 'Charlotte' && <>
               <option value="N2-A">If rezoned to N2-A (townhomes)</option>
               <option value="N2-B">If rezoned to N2-B (apartments)</option>

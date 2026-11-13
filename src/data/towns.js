@@ -103,7 +103,7 @@ export const PINEVILLE_ORDER = ['PV:R-44', 'PV:R-12', 'PV:R-7', 'PV:R-MF', 'PV:R
 export const KANNAPOLIS_SOURCE = 'Kannapolis Development Ordinance §3.3 (rewrite document); only R1 sets a minimum lot area'
 const kn = { jurisdiction: 'Kannapolis', bonusTo: null, heightFt: 35 }
 const knRow = (label, width, density, frontFt, sideFt, rearFt, extra = {}) =>
-  ({ ...kn, label, minLotSf: width * 85, minWidthFt: width, maxDensity: density, frontFt, sideFt, rearFt, densityNote: `no minimum lot area; up to ${density} units per acre`, ...extra })
+  ({ ...kn, label, minLotSf: width * 85, minWidthFt: width, maxDensity: density, frontFt, sideFt, rearFt, densityNote: `no minimum lot area; up to ${density} units per acre`, noMinLot: true, ...extra })
 export const KANNAPOLIS_RULES = {
   'KN:R1': { ...kn, label: 'R1', minLotSf: 43560, minWidthFt: 150, maxDensity: 1, frontFt: 45, sideFt: 20, rearFt: 30 },
   'KN:R2': knRow('R2', 100, 2, 35, 15, 30),

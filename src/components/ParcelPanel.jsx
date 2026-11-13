@@ -282,7 +282,7 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
           <h3>What you can build</h3>
           <div className="zone-head"><strong className="zone-code">{districtLabel(itCode)}</strong> <span>{town.name} {town.kind}</span></div>
           <dl className="facts">
-            <dt>Min lot area</dt><dd>{itRule.minLotSf.toLocaleString()} sq ft</dd>
+            <dt>Min lot area</dt><dd>{itRule.noMinLot ? `None (drafts assume ${itRule.minWidthFt} × 85 ft lots)` : `${itRule.minLotSf.toLocaleString()} sq ft`}</dd>
             <dt>Min lot width</dt><dd>{itRule.minWidthFt} ft</dd>
             {itRule.maxDensity && <><dt>Max density</dt><dd>{itRule.densityNote ? itRule.densityNote.charAt(0).toUpperCase() + itRule.densityNote.slice(1) : `${itRule.maxDensity} units per acre`}</dd></>}
             {!itRule.maxDensity && itRule.densityNote && <><dt>Lots</dt><dd>{itRule.densityNote.charAt(0).toUpperCase() + itRule.densityNote.slice(1)}</dd></>}
