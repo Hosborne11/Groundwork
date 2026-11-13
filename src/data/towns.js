@@ -95,9 +95,29 @@ export const PINEVILLE_RULES = {
 }
 export const PINEVILLE_ORDER = ['PV:R-44', 'PV:R-12', 'PV:R-7', 'PV:R-MF', 'PV:RMX']
 
-export const TOWN_RULES = { ...CONCORD_RULES, ...MONROE_RULES, ...MATTHEWS_RULES, ...MINT_HILL_RULES, ...HUNTERSVILLE_RULES, ...PINEVILLE_RULES }
-export const TOWN_ORDERS = { Concord: CONCORD_ORDER, Monroe: MONROE_ORDER, Matthews: MATTHEWS_ORDER, 'Mint Hill': MINT_HILL_ORDER, Huntersville: HUNTERSVILLE_ORDER, Pineville: PINEVILLE_ORDER }
-export const TOWN_SOURCES = { Concord: CONCORD_SOURCE, Monroe: MONROE_SOURCE, Matthews: MATTHEWS_SOURCE, 'Mint Hill': MINT_HILL_SOURCE, Huntersville: HUNTERSVILLE_SOURCE, Pineville: PINEVILLE_SOURCE }
-export const TOWN_PLANS = { Concord: '2030 Land Use Plan', Monroe: 'Forward Monroe plan', Matthews: 'Envision Matthews land use plan', 'Mint Hill': 'Comprehensive Plan and Future Land Use map', Huntersville: '2040 Community Plan', Pineville: 'Comprehensive Plan and Residential Overlay District' }
+// City of Kannapolis Development Ordinance (KDO rewrite), Section 3.3 Residential Districts. Only R1
+// sets a minimum lot area; the others govern by lot width and a units-per-acre cap. Widths are for
+// front-loaded single-family lots (duplex/triplex 90 ft; alley-loaded and attached lots narrower).
+// minLotSf below is a drafting floor (width x 85 ft), not a code minimum. Keys carry "KN:" since
+// Waxhaw also uses R1 and R4.
+export const KANNAPOLIS_SOURCE = 'Kannapolis Development Ordinance §3.3 (rewrite document); only R1 sets a minimum lot area'
+const kn = { jurisdiction: 'Kannapolis', bonusTo: null, heightFt: 35 }
+const knRow = (label, width, density, frontFt, sideFt, rearFt, extra = {}) =>
+  ({ ...kn, label, minLotSf: width * 85, minWidthFt: width, maxDensity: density, frontFt, sideFt, rearFt, densityNote: `no minimum lot area; up to ${density} units per acre`, ...extra })
+export const KANNAPOLIS_RULES = {
+  'KN:R1': { ...kn, label: 'R1', minLotSf: 43560, minWidthFt: 150, maxDensity: 1, frontFt: 45, sideFt: 20, rearFt: 30 },
+  'KN:R2': knRow('R2', 100, 2, 35, 15, 30),
+  'KN:R4': knRow('R4', 75, 4, 25, 10, 25),
+  'KN:R6': knRow('R6', 60, 6, 15, 5, 25),
+  'KN:R7': knRow('R7', 60, 7, 10, 5, 20),
+  'KN:R8': knRow('R8', 60, 8, 10, 5, 5, { apt: { density: 8, stories: 3 } }),
+  'KN:R18': knRow('R18', 60, 18, 10, 5, 5, { heightFt: 48, apt: { density: 18, stories: 4 } }),
+}
+export const KANNAPOLIS_ORDER = ['KN:R1', 'KN:R2', 'KN:R4', 'KN:R6', 'KN:R7', 'KN:R8', 'KN:R18']
+
+export const TOWN_RULES = { ...CONCORD_RULES, ...MONROE_RULES, ...MATTHEWS_RULES, ...MINT_HILL_RULES, ...HUNTERSVILLE_RULES, ...PINEVILLE_RULES, ...KANNAPOLIS_RULES }
+export const TOWN_ORDERS = { Concord: CONCORD_ORDER, Monroe: MONROE_ORDER, Matthews: MATTHEWS_ORDER, 'Mint Hill': MINT_HILL_ORDER, Huntersville: HUNTERSVILLE_ORDER, Pineville: PINEVILLE_ORDER, Kannapolis: KANNAPOLIS_ORDER }
+export const TOWN_SOURCES = { Concord: CONCORD_SOURCE, Monroe: MONROE_SOURCE, Matthews: MATTHEWS_SOURCE, 'Mint Hill': MINT_HILL_SOURCE, Huntersville: HUNTERSVILLE_SOURCE, Pineville: PINEVILLE_SOURCE, Kannapolis: KANNAPOLIS_SOURCE }
+export const TOWN_PLANS = { Concord: '2030 Land Use Plan', Monroe: 'Forward Monroe plan', Matthews: 'Envision Matthews land use plan', 'Mint Hill': 'Comprehensive Plan and Future Land Use map', Huntersville: '2040 Community Plan', Pineville: 'Comprehensive Plan and Residential Overlay District', Kannapolis: 'Comprehensive Plan' }
 // what a district is called on screen (Mint Hill's keys carry a town prefix)
 export const districtLabel = (code) => TOWN_RULES[code]?.label || code

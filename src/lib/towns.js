@@ -291,3 +291,37 @@ export async function pinevilleApprovalContext(parcel, key) {
   const intense = neighbors.filter((d) => /^(R-7|R-MF|RMX|DC|B-|O-|G-I)/.test(d))
   return { code: key, town: 'Pineville', precedents, cityCounts: {}, pending: [], frontage, nearestRoad, neighbors, intenseNeighbors: intense, mapOnly: true, zonedAreas: true, failed: [near, roads, zones].filter((r) => !ok(r)).length }
 }
+
+/* ---------- Kannapolis (Cabarrus County's town zoning layer 3) ---------- */
+const KANNAPOLIS_ZONING = '/gis/cabarrus/OpenData/Zoning_By_Municipalities/MapServer/3'
+
+/** Kannapolis: approved conditional rezonings to the scenario district (e.g. "R8-CZ"), with case numbers and dates. */
+export async function kannapolisApprovalContext(parcel, key) {
+  const code = key.replace(/^KN:/, '')
+  const c = turf.pointOnFeature(parcel).geometry.coordinates
+  const [near, roads, zones] = await Promise.allSettled([
+    getJSON(`${KANNAPOLIS_ZONING}/query`, { ...nearPoint(c), where: `ZONINGCODE = '${code}-CZ'`, outFields: 'ZONINGCODE,CASE_NUMBE,EFFECTIVE_,ACRES', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0002, f: 'json' }),
+    tigerStreets(parcel, 600),
+    getJSON(`${KANNAPOLIS_ZONING}/query`, { geometry: padded(parcel, 100), geometryType: 'esriGeometryEnvelope', inSR: 4326, spatialRel: 'esriSpatialRelIntersects', outFields: 'ZONINGCODE', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0001, f: 'json' }),
+  ])
+  const byCase = new Map()
+  for (const f of (ok(near)?.features || []).filter((x) => x.geometry?.rings?.length)) {
+    const a = f.attributes, shape = turf.polygon(f.geometry.rings)
+    const id = String(a.CASE_NUMBE || '').trim()
+    const k = id || `piece-${byCase.size}`
+    const cur = byCase.get(k)
+    const acres = Number(a.ACRES) || turf.area(shape) / 4046.86
+    if (cur) { cur.acres += acres; cur.pieces.push(shape); continue }
+    byCase.set(k, { id, code: a.ZONINGCODE, date: a.EFFECTIVE_, acres, pieces: [shape] })
+  }
+  const precedents = [...byCase.values()].filter((x) => x.id || x.acres >= 0.5).map((x) => {
+    const shape = x.pieces.length === 1 ? x.pieces[0] : turf.convex(turf.featureCollection(x.pieces)) || x.pieces[0]
+    const year = x.date ? new Date(x.date).getFullYear() : yearOf(x.id)
+    return { petition: x.id || 'Case not listed', requested: x.code, status: 'Approved', decided: null, year: Number.isFinite(year) ? year : null,
+      acres: x.acres, lots: null, from: null, miles: turf.distance(c, turf.pointOnFeature(shape), { units: 'miles' }), shape }
+  }).filter((p) => !turf.booleanPointInPolygon(turf.point(c), p.shape)).sort((a, b) => a.miles - b.miles)
+  const { frontage, nearestRoad } = frontageFrom(parcel, ok(roads) || [])
+  const neighbors = neighborsFrom(ok(zones)?.features || [], 'ZONINGCODE', parcel)
+  const intense = neighbors.filter((d) => /^(R6|R7|R8|R18|PD|C|MX|O|I)/.test(d))
+  return { code: key, town: 'Kannapolis', precedents, cityCounts: {}, pending: [], frontage, nearestRoad, neighbors, intenseNeighbors: intense, mapOnly: true, failed: [near, roads, zones].filter((r) => !ok(r)).length }
+}

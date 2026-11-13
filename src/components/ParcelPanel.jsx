@@ -193,10 +193,14 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
   const canSketch = isMeck && zoneParts && N1[zoneParts.base] && !zoneParts.conditional
   // Town residential districts Groundwork drafts in (conditional districts have site-specific plans)
   const concordZone = p.county === 'Cabarrus' && cabZoning.status === 'done' ? cabZoning.zones?.find((z) => z.town === 'Concord')?.code?.trim() : null
+  // Kannapolis base districts (conditional "-CZ" districts have site-specific plans)
+  const kannZone = p.county === 'Cabarrus' && cabZoning.status === 'done' ? cabZoning.zones?.find((z) => z.town === 'Kannapolis')?.code?.trim() : null
+  const kannKey = kannZone && !/-CZ$/i.test(kannZone) && TOWN_RULES[`KN:${kannZone}`] ? `KN:${kannZone}` : null
   const town = isUnion && uZoning.status === 'done'
     ? (uZoning.town === 'Indian Trail' && IT_RULES[uZoning.code] && !IT_RULES[uZoning.code].apartment ? { name: 'Indian Trail', code: uZoning.code, rule: IT_RULES[uZoning.code], source: IT_SOURCE, kind: 'single-family' }
       : uZoning.town === 'Monroe' && MONROE_RULES[uZoning.code] ? { name: 'Monroe', code: uZoning.code, rule: MONROE_RULES[uZoning.code], source: TOWN_SOURCES.Monroe, kind: 'residential' } : null)
     : concordZone && CONCORD_RULES[concordZone] ? { name: 'Concord', code: concordZone, rule: CONCORD_RULES[concordZone], source: TOWN_SOURCES.Concord, kind: 'residential' }
+    : kannKey ? { name: 'Kannapolis', code: kannKey, rule: TOWN_RULES[kannKey], source: TOWN_SOURCES.Kannapolis, kind: 'residential' }
     : meckTown?.key && TOWN_RULES[meckTown.key] && !meckTown.conditional && !TOWN_RULES[meckTown.key].conditionalOnly && !TOWN_RULES[meckTown.key].noDraft
       ? { name: meckTown.town, code: meckTown.key, rule: TOWN_RULES[meckTown.key], source: TOWN_SOURCES[meckTown.town], kind: 'residential' } : null
   const itCode = town?.code || null // (kept for the site report)
