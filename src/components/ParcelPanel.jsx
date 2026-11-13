@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { openReportWindow, writeSiteReport } from '../lib/siteReport'
 import { IT_RULES, IT_SOURCE } from '../data/indianTrail'
-import { CONCORD_RULES, MONROE_RULES, TOWN_SOURCES } from '../data/towns'
+import { CONCORD_RULES, MONROE_RULES, TOWN_RULES, TOWN_SOURCES, districtLabel } from '../data/towns'
+import { meckTownZoning } from '../lib/towns'
 import * as turf from '@turf/turf'
 import { nearestSewer, nearestWater, floodShare, soilsFor, zoningAt } from '../lib/gis'
 import { charlotteZoning, placeType } from '../lib/charlotte'
@@ -178,6 +179,8 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
   const yLandUse = useCheck(yorkLandUseCheck, parcel, isYork)
   const cltZoning = useValue(charlotteZoning, parcel, isMeck)
   const place = useValue(placeType, parcel, isMeck)
+  // Mecklenburg parcels outside Charlotte's zoning: Matthews and Mint Hill publish their own
+  const meckTown = useValue(meckTownZoning, parcel, isMeck && cltZoning === null)
   const deed = useValue(deedGroup, parcel)
   const [copied, setCopied] = useState(false)
   const [draftSummary, setDraftSummary] = useState(null) // the open neighborhood draft, for the site report
@@ -193,7 +196,9 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
   const town = isUnion && uZoning.status === 'done'
     ? (uZoning.town === 'Indian Trail' && IT_RULES[uZoning.code] && !IT_RULES[uZoning.code].apartment ? { name: 'Indian Trail', code: uZoning.code, rule: IT_RULES[uZoning.code], source: IT_SOURCE, kind: 'single-family' }
       : uZoning.town === 'Monroe' && MONROE_RULES[uZoning.code] ? { name: 'Monroe', code: uZoning.code, rule: MONROE_RULES[uZoning.code], source: TOWN_SOURCES.Monroe, kind: 'residential' } : null)
-    : concordZone && CONCORD_RULES[concordZone] ? { name: 'Concord', code: concordZone, rule: CONCORD_RULES[concordZone], source: TOWN_SOURCES.Concord, kind: 'residential' } : null
+    : concordZone && CONCORD_RULES[concordZone] ? { name: 'Concord', code: concordZone, rule: CONCORD_RULES[concordZone], source: TOWN_SOURCES.Concord, kind: 'residential' }
+    : meckTown?.key && TOWN_RULES[meckTown.key] && !meckTown.conditional && !TOWN_RULES[meckTown.key].conditionalOnly
+      ? { name: meckTown.town, code: meckTown.key, rule: TOWN_RULES[meckTown.key], source: TOWN_SOURCES[meckTown.town], kind: 'residential' } : null
   const itCode = town?.code || null // (kept for the site report)
   const itRule = town?.rule || null
   const saleDate = `${p.saleMonth ? `${p.saleMonth}/` : ''}${p.saleYear || ''}`
@@ -251,7 +256,7 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
         </div>
       </div>
 
-      {isMeck && (
+      {isMeck && !meckTown && (
         <section className="section">
           <h3>What you can build</h3>
           {place && <p className="place">2040 Policy Map: <strong>{place.name}</strong>{place.area ? ` · ${place.area}` : ''}</p>}
@@ -260,10 +265,18 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
         </section>
       )}
 
+      {meckTown && !itRule && (
+        <section className="section">
+          <h3>Zoning</h3>
+          <div className="zone-head"><strong className="zone-code">{meckTown.raw}</strong> <span>Town of {meckTown.town}</span></div>
+          <p className="muted-small">{meckTown.conditional ? 'Conditional zoning: what can be built is set by the approved site plan and its conditions, so Groundwork doesn’t draft it.' : `Groundwork drafts ${meckTown.town}’s single-family residential districts; this district isn’t one of them.`}{meckTown.petition ? ` Petition ${meckTown.petition}.` : ''}</p>
+        </section>
+      )}
+
       {itRule && (
         <section className="section">
           <h3>What you can build</h3>
-          <div className="zone-head"><strong className="zone-code">{itCode}</strong> <span>{town.name} {town.kind}</span></div>
+          <div className="zone-head"><strong className="zone-code">{districtLabel(itCode)}</strong> <span>{town.name} {town.kind}</span></div>
           <dl className="facts">
             <dt>Min lot area</dt><dd>{itRule.minLotSf.toLocaleString()} sq ft</dd>
             <dt>Min lot width</dt><dd>{itRule.minWidthFt} ft</dd>

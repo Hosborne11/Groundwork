@@ -34,7 +34,39 @@ export const MONROE_RULES = {
 }
 export const MONROE_ORDER = ['RR', 'RLD', 'RMD', 'RHD']
 
-export const TOWN_RULES = { ...CONCORD_RULES, ...MONROE_RULES }
-export const TOWN_ORDERS = { Concord: CONCORD_ORDER, Monroe: MONROE_ORDER }
-export const TOWN_SOURCES = { Concord: CONCORD_SOURCE, Monroe: MONROE_SOURCE }
-export const TOWN_PLANS = { Concord: '2030 Land Use Plan', Monroe: 'Forward Monroe plan' }
+
+// Town of Matthews UDO §155.604.1 (Table of Dimensional Standards): lot area, width, front setback,
+// and interior side yard for R-20 through R-9. Rear yards: R-9's 45 ft is confirmed on approved
+// plans; the table's R-20/R-15/R-12 rear yards weren't legible in available copies, so 45 ft is
+// assumed for them (it only feeds the "room for a house" check). R-VS is a conditional-only district;
+// its values are the conditions repeated on approved R-VS plans (5,500 sq ft lots, 50 ft wide).
+export const MATTHEWS_SOURCE = 'Matthews UDO §155.604.1 (rear yards for R-20, R-15, R-12 assumed at 45 ft)'
+const mt = { jurisdiction: 'Matthews', bonusTo: null, heightFt: 35 }
+export const MATTHEWS_RULES = {
+  'R-20': { ...mt, minLotSf: 20000, minWidthFt: 90, frontFt: 50, sideFt: 12, rearFt: 45 },
+  'R-15': { ...mt, minLotSf: 15000, minWidthFt: 80, frontFt: 40, sideFt: 10, rearFt: 45 },
+  'R-12': { ...mt, minLotSf: 12000, minWidthFt: 70, frontFt: 35, sideFt: 10, rearFt: 45 },
+  'R-9': { ...mt, minLotSf: 9000, minWidthFt: 60, frontFt: 30, sideFt: 6, rearFt: 45 },
+  'R-VS': { ...mt, minLotSf: 5500, minWidthFt: 50, frontFt: 20, sideFt: 6, rearFt: 20, conditionalOnly: true, typical: 'Typical conditions on approved R-VS plans' },
+}
+export const MATTHEWS_ORDER = ['R-20', 'R-15', 'R-12', 'R-9', 'R-VS']
+
+// Town of Mint Hill: residential zoning is one district, R. Values are the conservation subdivision
+// standards cited in Planning Board staff reports (12,500 sq ft lots, 80 ft wide, 30/8/30 setbacks).
+// "R (CD)" is a conditional rezoning; its values are typical approved conditions (e.g. the 2018
+// Meritage Homes petition: 6,600 sq ft lots, 55 ft wide, 20/5/20). Keys carry an "MH:" prefix so
+// Mint Hill's "R" doesn't collide with Huntersville's "R"; `label` is what people see.
+export const MINT_HILL_SOURCE = 'Mint Hill UDO conservation subdivision standards, as cited in Planning Board staff reports'
+const mh = { jurisdiction: 'Mint Hill', bonusTo: null, heightFt: 35 }
+export const MINT_HILL_RULES = {
+  'MH:R': { ...mh, label: 'R', minLotSf: 12500, minWidthFt: 80, frontFt: 30, sideFt: 8, rearFt: 30 },
+  'MH:R-CD': { ...mh, label: 'R (CD)', minLotSf: 6600, minWidthFt: 55, frontFt: 20, sideFt: 5, rearFt: 20, conditionalOnly: true, typical: 'Typical conditions on approved R (CD) rezonings' },
+}
+export const MINT_HILL_ORDER = ['MH:R', 'MH:R-CD']
+
+export const TOWN_RULES = { ...CONCORD_RULES, ...MONROE_RULES, ...MATTHEWS_RULES, ...MINT_HILL_RULES }
+export const TOWN_ORDERS = { Concord: CONCORD_ORDER, Monroe: MONROE_ORDER, Matthews: MATTHEWS_ORDER, 'Mint Hill': MINT_HILL_ORDER }
+export const TOWN_SOURCES = { Concord: CONCORD_SOURCE, Monroe: MONROE_SOURCE, Matthews: MATTHEWS_SOURCE, 'Mint Hill': MINT_HILL_SOURCE }
+export const TOWN_PLANS = { Concord: '2030 Land Use Plan', Monroe: 'Forward Monroe plan', Matthews: 'Envision Matthews land use plan', 'Mint Hill': 'Comprehensive Plan and Future Land Use map' }
+// what a district is called on screen (Mint Hill's keys carry a town prefix)
+export const districtLabel = (code) => TOWN_RULES[code]?.label || code

@@ -2,21 +2,24 @@ import { useEffect, useState } from 'react'
 import * as turf from '@turf/turf'
 import { approvalContext } from '../lib/charlotte'
 import { itApprovalContext } from '../lib/indianTrail'
-import { concordApprovalContext, monroeApprovalContext } from '../lib/towns'
+import { concordApprovalContext, monroeApprovalContext, matthewsApprovalContext, mintHillApprovalContext } from '../lib/towns'
+import { districtLabel } from '../data/towns'
 
 // each town's own lookup; Charlotte uses its petition history
-const LOOKUP = { 'Indian Trail': itApprovalContext, Concord: concordApprovalContext, Monroe: monroeApprovalContext }
+const LOOKUP = { 'Indian Trail': itApprovalContext, Concord: concordApprovalContext, Monroe: monroeApprovalContext, Matthews: matthewsApprovalContext, 'Mint Hill': mintHillApprovalContext }
 import { policyFit, jurisdictionOf } from '../data/charlotteUdo'
 
 const monthYear = (d) => d?.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
+const poss = (t) => (/s$/i.test(t) ? `${t}’` : `${t}’s`) // Matthews’ map, Concord’s map
 const titleCase = (t) => t.toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase())
 
 /**
  * Factors staff and City Council weigh on a rezoning, shown for the scenario district.
  * Deliberately a list of factors, not a prediction.
  */
-export default function ApprovalContext({ parcel, code, placeType, editor, onFactors, apartments = false }) {
+export default function ApprovalContext({ parcel, code: key, placeType, editor, onFactors, apartments = false }) {
+  const code = districtLabel(key) // what people see; `key` is the rules key (e.g. Mint Hill's "MH:R-CD")
   const [ctx, setCtx] = useState(null)
   const [state, setState] = useState('loading')
   const [active, setActive] = useState(null)
@@ -24,11 +27,11 @@ export default function ApprovalContext({ parcel, code, placeType, editor, onFac
   useEffect(() => {
     let live = true
     setState('loading'); setCtx(null); setActive(null)
-    ;(LOOKUP[jurisdictionOf(code)] || approvalContext)(parcel, code)
+    ;(LOOKUP[jurisdictionOf(key)] || approvalContext)(parcel, key)
       .then((c) => { if (live) { setCtx(c); setState('done') } })
       .catch(() => { if (live) setState('error') })
     return () => { live = false }
-  }, [parcel, code])
+  }, [parcel, key])
 
   // precedent outlines on the map while this section is showing
   useEffect(() => {
@@ -39,7 +42,7 @@ export default function ApprovalContext({ parcel, code, placeType, editor, onFac
   }, [ctx, active, editor])
   useEffect(() => () => editor?.showPrecedents?.(null), [editor])
 
-  const fit = policyFit(code, placeType)
+  const fit = policyFit(key, placeType)
   // highlight one case and fit the view to it and the parcel
   const show = (p) => {
     setActive(p.petition)
@@ -60,16 +63,16 @@ export default function ApprovalContext({ parcel, code, placeType, editor, onFac
     const cityTotal = Object.values(city).reduce((a, b) => a + b, 0)
     const isN2 = code.startsWith('N2') || code === 'MFR' || apartments // the higher-intensity scenarios expected on thoroughfares
     const factors = [
-      { tone: fit.fit === 'consistent' ? 'good' : fit.fit === 'inconsistent' ? 'warn' : 'neutral', title: jurisdictionOf(code) === 'Charlotte' ? '2040 Policy Map' : jurisdictionOf(code) === 'Indian Trail' ? 'Comprehensive Plan' : 'Land use plan', text: fit.note },
+      { tone: fit.fit === 'consistent' ? 'good' : fit.fit === 'inconsistent' ? 'warn' : 'neutral', title: jurisdictionOf(key) === 'Charlotte' ? '2040 Policy Map' : jurisdictionOf(key) === 'Indian Trail' ? 'Comprehensive Plan' : 'Land use plan', text: fit.note },
       {
         tone: ctx.precedents.some((p) => p.status === 'Approved') || ctx.conditionalCounts?.within2 > 0 ? 'good' : 'neutral',
         title: 'Nearby precedents',
         text: ctx.conditionalCounts
-          ? `${ctx.conditionalCounts.within5.toLocaleString()} parcels within 5 miles carry conditional zoning (CD) on ${ctx.town}’s map, about ${Math.round(ctx.conditionalCounts.acres5).toLocaleString()} acres; ${ctx.conditionalCounts.within2.toLocaleString()} within 2 miles. ${ctx.town}’s map doesn’t record case numbers or which district a conditional rezoning parallels, so this shows how common conditional rezonings are nearby, not approvals to ${code} specifically.`
+          ? `${ctx.conditionalCounts.within5.toLocaleString()} parcels within 5 miles carry conditional zoning (CD) on ${poss(ctx.town)} map, about ${Math.round(ctx.conditionalCounts.acres5).toLocaleString()} acres; ${ctx.conditionalCounts.within2.toLocaleString()} within 2 miles. ${poss(ctx.town)} map doesn’t record case numbers or which district a conditional rezoning parallels, so this shows how common conditional rezonings are nearby, not approvals to ${code} specifically.`
           : ctx.mapOnly
           ? (ctx.precedents.length
-            ? `${plural(ctx.precedents.length, 'approved conditional rezoning')} to ${code} within 5 miles on ${ctx.town}’s zoning map, covering ${ctx.precedents.some((p) => p.lots) ? `${ctx.precedents.reduce((t, p) => t + (p.lots || 0), 0).toLocaleString()} lots` : `about ${Math.round(ctx.precedents.reduce((t, p) => t + (p.acres || 0), 0)).toLocaleString()} acres`}${(() => { const y = Math.max(...ctx.precedents.map((p) => p.year || 0)); return y ? `, the most recent from ${y}` : '' })()}; ${within2.length ? `${within2.length} within 2 miles` : 'none within 2 miles'}. Only approved cases appear on a zoning map, so withdrawn or denied requests aren’t counted.`
-            : `No approved conditional rezonings to ${code} within 5 miles on ${ctx.town}’s zoning map. This would be a first for the area.`)
+            ? `${plural(ctx.precedents.length, 'approved conditional rezoning')} to ${code} within 5 miles on ${poss(ctx.town)} zoning map, covering ${ctx.precedents.some((p) => p.lots) ? `${ctx.precedents.reduce((t, p) => t + (p.lots || 0), 0).toLocaleString()} lots` : `about ${Math.round(ctx.precedents.reduce((t, p) => t + (p.acres || 0), 0)).toLocaleString()} acres`}${(() => { const y = Math.max(...ctx.precedents.map((p) => p.year || 0)); return y ? `, the most recent from ${y}` : '' })()}; ${within2.length ? `${within2.length} within 2 miles` : 'none within 2 miles'}. Only approved cases appear on a zoning map, so withdrawn or denied requests aren’t counted.`
+            : `No approved conditional rezonings to ${code} within 5 miles on ${poss(ctx.town)} zoning map. This would be a first for the area.`)
           : ctx.precedents.length
             ? `${plural(ctx.precedents.length, 'rezoning')} to ${code} within 5 miles since the UDO took effect in June 2023 (${tally(ctx.precedents)}); ${within2.length ? `${within2.length} of them within 2 miles` : 'none within 2 miles'}.`
             : `No rezonings to ${code} within 5 miles since the UDO took effect in June 2023. This would be a first for the area, which cuts both ways: no precedent to point to, but no history of neighbors fighting one either.`,

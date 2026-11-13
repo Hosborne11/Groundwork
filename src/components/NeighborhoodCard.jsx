@@ -7,6 +7,7 @@ import { RULES as N1, jurisdictionOf, CONSERVATION_DISTRICTS, CONSERVATION_MIN_A
 import { usePlans, savePlan, getPlan, renamePlan, duplicatePlan, deletePlan } from '../lib/planStore'
 import { handlesFor, softDrag, pxToSegment, feetAlong, ringOf, polygonOf } from '../lib/editHandles'
 import ApprovalContext from './ApprovalContext'
+import { districtLabel as dl } from '../data/towns'
 
 const fmt = (n, d = 0) => Number(n).toLocaleString('en-US', { maximumFractionDigits: d, minimumFractionDigits: d })
 
@@ -54,7 +55,8 @@ export default function NeighborhoodCard({ parcel, parts, code: zonedCode, place
   const [scenario, setScenario] = useState(null)
   const [scenarioCode, scenarioForm] = (scenario || '').split('|')
   const code = scenarioCode || zonedCode
-  const scenarioLabel = scenario ? `${scenarioCode}${scenarioForm === 'apt' ? ' (apartments)' : ''}` : null
+  const scenarioLabel = scenario ? `${dl(scenarioCode)}${scenarioForm === 'apt' ? ' (apartments)' : ''}` : null
+  const zonedLabel = dl(zonedCode) // what people see (Mint Hill's keys carry a town prefix)
   const std = N1[code]
   const town = jurisdictionOf(zonedCode) // 'Charlotte' or 'Indian Trail'
   const townhomes = !!std?.townhome // N2-A scenarios draft townhome buildings on sublots
@@ -583,25 +585,25 @@ export default function NeighborhoodCard({ parcel, parts, code: zonedCode, place
   const ck = plan?.check || {}
   const lotWord = plan?.product === 'townhomes' ? 'sublot' : 'lot'
   const checks = plan && !plan.error ? (plan.product === 'apartments' ? [
-    { label: 'Housing type', ok: allowed.ok, detail: allowed.ok === true ? `Apartments are allowed by right in ${ruleCode}` : allowed.note },
+    { label: 'Housing type', ok: allowed.ok, detail: allowed.ok === true ? `Apartments are allowed by right in ${dl(ruleCode)}` : allowed.note },
     { label: 'Building scale', ok: plan.bldgMaxFt <= APARTMENT.maxBldgFt + 1 && aptOpts.stories <= 4, detail: `${plan.buildings} buildings, up to ${plan.bldgMaxFt} ft long and ${plan.stories} stories, ${N1[ruleCode].apt ? `within the ${N1[ruleCode].apt.stories}-story limit for apartments` : `within the ${N1[ruleCode].heightFt} ft height limit`}` },
     { label: 'Parking', ok: true, detail: `${fmt(plan.spaces)} surface spaces, ${plan.spacesPerUnit.toFixed(1)} per unit${plan.parkingLimited ? '. Parking is what limits the unit count on this site' : ''} (a market assumption, not a UDO minimum)` },
     { label: 'Open space', ok: plan.openPct >= 15, detail: `${fmt(plan.openPct, 1)}% of the site stays open (green space and the pond)` },
   ] : [
-    { label: plan.product === 'townhomes' ? 'Sublot area' : 'Lot area', ok: plan.pass, detail: `Smallest ${lotWord} ${fmt(ck.minSf)} sq ft; Groundwork drafts ${ruleCode} with ${fmt(plan.minLotSf)} sq ft minimum ${lotWord}s${plan.capped === 'conservation' ? '. At the conservation maximum lot count' : ''}` },
-    ...(rules?.maxDensity && !plan.product ? [{ label: 'Density', ok: plan.density <= rules.maxDensity + 0.001, detail: `${fmt(plan.density, 2)} lots per acre; ${ruleCode} allows up to ${rules.maxDensity} per acre${plan.capped === 'density' ? ', which is what limits the lot count here' : ''}` }] : []),
+    { label: plan.product === 'townhomes' ? 'Sublot area' : 'Lot area', ok: plan.pass, detail: `Smallest ${lotWord} ${fmt(ck.minSf)} sq ft; Groundwork drafts ${dl(ruleCode)} with ${fmt(plan.minLotSf)} sq ft minimum ${lotWord}s${plan.capped === 'conservation' ? '. At the conservation maximum lot count' : ''}` },
+    ...(rules?.maxDensity && !plan.product ? [{ label: 'Density', ok: plan.density <= rules.maxDensity + 0.001, detail: `${fmt(plan.density, 2)} lots per acre; ${dl(ruleCode)} allows up to ${rules.maxDensity} per acre${plan.capped === 'density' ? ', which is what limits the lot count here' : ''}` }] : []),
     ...(plan.product === 'townhomes' ? [{ label: 'Building size', ok: plan.bldgMaxFt <= TOWNHOME.maxBldgFt && Math.max(...plan.bldgUnits) <= thOpts.maxPerBldg, detail: `${plan.buildings} buildings, up to ${Math.max(...plan.bldgUnits)} units each; longest ${plan.bldgMaxFt} ft. Recent N2-A approvals typically condition buildings to about ${TOWNHOME.maxBldgFt} ft and 4-6 units.` }] : []),
     { label: 'Lot width', ok: ck.minWidth == null || ck.minWidth >= minWidth - 0.5, detail: ck.minWidth ? `Narrowest street frontage ${ck.minWidth} ft; needs ${minWidth} ft (cul-de-sac lots are measured at the setback)` : 'Measured on the lot mix' },
     { label: 'Street access', ok: true, detail: plan.noFrontage ? `Every ${lotWord} fronts a street (${plan.noFrontage} without frontage were left out)` : `Every ${lotWord} fronts a street with room for a driveway` },
     { label: plan?.product === 'townhomes' ? 'Room for a unit' : 'Room for a house', ok: ck.minDepth == null || ck.minDepth >= needDepth, detail: `Shallowest ${lotWord} ${ck.minDepth ?? '—'} ft deep; a ${plan?.product === 'townhomes' ? 'unit' : 'house'} needs ${needDepth} ft for a ${frontFt} ft front setback${rules?.frontFt ? '' : ' (assumed)'}, the ${rules?.rearFt} ft rear setback, and a ${MIN_HOUSE_DEPTH} ft deep home` },
-    { label: 'Housing type', ok: allowed.ok, detail: allowed.ok === true ? `${HOUSING.find((h) => h.key === housing).label} ${housing === 'mix' ? 'types are' : /s$/.test(HOUSING.find((h) => h.key === housing).label) ? 'are' : 'is'} allowed by right in ${ruleCode}` : allowed.ok === 'limited' ? `Allowed in ${ruleCode} only on a small scale` : `Not allowed by right in ${ruleCode}` },
+    { label: 'Housing type', ok: allowed.ok, detail: allowed.ok === true ? `${HOUSING.find((h) => h.key === housing).label} ${housing === 'mix' ? 'types are' : /s$/.test(HOUSING.find((h) => h.key === housing).label) ? 'are' : 'is'} allowed by right in ${dl(ruleCode)}` : allowed.ok === 'limited' ? `Allowed in ${dl(ruleCode)} only on a small scale` : `Not allowed by right in ${dl(ruleCode)}` },
   ]) : []
   const passAll = !!plan && !plan.error && checks.every((c) => c.ok === true) && !plan.conflicts?.length
 
   // ---- summary of the current draft, for the site report ----
   const summary = open && plan && !plan.error ? {
     planName: current?.name || null,
-    zoned: zonedCode, scenario: scenarioLabel, district: ruleCode,
+    zoned: zonedLabel, scenario: scenarioLabel, district: dl(ruleCode),
     product: plan.product || 'lots',
     count: plan.lots, homes, density: plan.density,
     unitWord: plan.product === 'townhomes' ? 'townhomes' : plan.product === 'apartments' ? 'apartments' : 'lots',
@@ -660,8 +662,8 @@ export default function NeighborhoodCard({ parcel, parts, code: zonedCode, place
         <label className="zoning-pick">
           <span>Zoning</span>
           <select value={scenario || ''} onChange={(e) => changeScenario(e.target.value)} disabled={editing}>
-            <option value="">As zoned ({zonedCode})</option>
-            {upzoneOptions(zonedCode).filter((c) => !N1[c].townhome).map((c) => <option key={c} value={c}>If rezoned to {c} ({N1[c].minLotSf.toLocaleString()} sq ft lots)</option>)}
+            <option value="">As zoned ({zonedLabel})</option>
+            {upzoneOptions(zonedCode).filter((c) => !N1[c].townhome).map((c) => <option key={c} value={c}>If rezoned to {dl(c)} ({N1[c].minLotSf.toLocaleString()} sq ft lots{N1[c].typical ? ', typical conditions' : ''})</option>)}
             {town === 'Charlotte' && <>
               <option value="N2-A">If rezoned to N2-A (townhomes)</option>
               <option value="N2-B">If rezoned to N2-B (apartments)</option>
@@ -674,8 +676,8 @@ export default function NeighborhoodCard({ parcel, parts, code: zonedCode, place
       )}
       {scenario && (
         <div className="scenario-banner">
-          <strong>Rezoning scenario: {zonedCode} → {scenarioLabel}</strong>
-          <span>Drafted under {scenarioCode} rules. {town === 'Charlotte' ? 'Building this way needs a rezoning approved by City Council.' : `Building this way needs a conditional rezoning approved by the ${town} ${town === 'Indian Trail' ? 'Town' : 'City'} Council.`}</span>
+          <strong>Rezoning scenario: {zonedLabel} → {scenarioLabel}</strong>
+          <span>Drafted under {dl(scenarioCode)} rules. {town === 'Charlotte' ? 'Building this way needs a rezoning approved by City Council.' : `Building this way needs a conditional rezoning approved by the ${{ 'Indian Trail': 'Indian Trail Town Council', Concord: 'Concord City Council', Monroe: 'Monroe City Council', Matthews: 'Matthews Board of Commissioners', 'Mint Hill': 'Mint Hill Board of Commissioners' }[town] || `${town} governing board`}.`}{N1[scenarioCode]?.typical ? ` Lot standards shown are ${N1[scenarioCode].typical.charAt(0).toLowerCase()}${N1[scenarioCode].typical.slice(1)}, not ordinance minimums.` : ''}</span>
         </div>
       )}
       {scenario && !parts && <ApprovalContext parcel={parcel} code={scenarioCode} apartments={apartments} placeType={placeType} editor={editor} onFactors={setApproval} />}
@@ -738,13 +740,13 @@ export default function NeighborhoodCard({ parcel, parts, code: zonedCode, place
           {scenario && (
             <p className="scenario-compare">
               {baseline?.lots != null
-                ? <>By right as {zonedCode}: <strong>{baseline.lots} lots</strong> · as {scenarioLabel}: <strong>{plan.product === 'apartments' ? '≈' : ''}{plan.lots} {plan.product === 'townhomes' ? 'townhomes' : plan.product === 'apartments' ? 'apartments' : 'lots'}</strong> <span className={plan.lots - baseline.lots >= 0 ? 'up' : 'down'}>({plan.lots - baseline.lots >= 0 ? '+' : ''}{plan.lots - baseline.lots})</span></>
-                : baseline?.error ? 'The by-right comparison couldn’t be drafted.' : `Drafting the by-right ${zonedCode} comparison…`}
+                ? <>By right as {zonedLabel}: <strong>{baseline.lots} lots</strong> · as {scenarioLabel}: <strong>{plan.product === 'apartments' ? '≈' : ''}{plan.lots} {plan.product === 'townhomes' ? 'townhomes' : plan.product === 'apartments' ? 'apartments' : 'lots'}</strong> <span className={plan.lots - baseline.lots >= 0 ? 'up' : 'down'}>({plan.lots - baseline.lots >= 0 ? '+' : ''}{plan.lots - baseline.lots})</span></>
+                : baseline?.error ? 'The by-right comparison couldn’t be drafted.' : `Drafting the by-right ${zonedLabel} comparison…`}
             </p>
           )}
           {plan.product === 'townhomes' && <p className="nb-density">{plan.buildings} buildings of up to {Math.max(...plan.bldgUnits)} units · longest {plan.bldgMaxFt} ft · {plan.thStyle === 'alley' ? 'rear alley-loaded' : 'front-loaded garages'}</p>}
-          {plan.product === 'apartments' && <p className="nb-density">{plan.buildings} buildings · {plan.stories} stories · {fmt(plan.spaces)} surface spaces ({plan.spacesPerUnit.toFixed(1)} per unit){plan.parkingLimited ? ' · yield is parking-limited' : ''}{plan.densityLimited ? ` · yield is set by ${ruleCode}’s density limit` : ''}</p>}
-          <p className="nb-density">{fmt(plan.density, plan.product === 'apartments' ? 1 : 2)} {plan.product ? 'homes' : 'lots'} per acre{homes !== plan.lots ? ` · ${fmt(homes / plan.totalAc, 1)} homes per acre` : ''}{plan.capped === 'conservation' ? ' · at the conservation maximum' : plan.capped === 'density' ? ` · at ${ruleCode}’s ${rules.maxDensity} units/acre limit` : ''}</p>
+          {plan.product === 'apartments' && <p className="nb-density">{plan.buildings} buildings · {plan.stories} stories · {fmt(plan.spaces)} surface spaces ({plan.spacesPerUnit.toFixed(1)} per unit){plan.parkingLimited ? ' · yield is parking-limited' : ''}{plan.densityLimited ? ` · yield is set by ${dl(ruleCode)}’s density limit` : ''}</p>}
+          <p className="nb-density">{fmt(plan.density, plan.product === 'apartments' ? 1 : 2)} {plan.product ? 'homes' : 'lots'} per acre{homes !== plan.lots ? ` · ${fmt(homes / plan.totalAc, 1)} homes per acre` : ''}{plan.capped === 'conservation' ? ' · at the conservation maximum' : plan.capped === 'density' ? ` · at ${dl(ruleCode)}’s ${rules.maxDensity} units/acre limit` : ''}</p>
           {allowed.ok !== true && (
             <div className={`note ${allowed.ok === false ? 'warn' : ''}`}>
               {allowed.note}

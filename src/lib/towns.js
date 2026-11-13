@@ -97,3 +97,86 @@ export async function monroeApprovalContext(parcel, code) {
     mapOnly: true, conditionalCounts: cd, failed: [s5, roads, zones].filter((r) => !ok(r)).length,
   }
 }
+
+/* ---------- Mecklenburg towns on ArcGIS Online (no proxy needed) ---------- */
+const MATTHEWS = 'https://services5.arcgis.com/Ueg5beFsCRb0dUTQ/arcgis/rest/services'
+const MATTHEWS_LAYERS = ['Traditional_Residential_Districts', 'Conditional_Only_District', 'Conditional_Districts', 'Traditional_Nonresidential_Districts']
+const MINT_HILL = 'https://services5.arcgis.com/4q0H41ETciaWgDNF/arcgis/rest/services/Zoning_Layer/FeatureServer/0'
+const atParcel = (parcel) => {
+  const c = turf.pointOnFeature(parcel).geometry.coordinates
+  return { geometry: `${c[0]},${c[1]}`, geometryType: 'esriGeometryPoint', inSR: 4326, spatialRel: 'esriSpatialRelIntersects', returnGeometry: false, f: 'json' }
+}
+// "R-12(CD)" / "R-12 (CD)" -> base "R-12", conditional true; Mint Hill "R DO-A (CD)" -> "R"
+const parseCode = (raw) => {
+  const t = String(raw || '').trim()
+  const conditional = /\(CD\)|\bCD\b/i.test(t)
+  const base = t.replace(/\s*\(CD\)\s*/gi, '').replace(/\s+DO-[AB]\b/gi, '').trim()
+  return { raw: t, base, conditional }
+}
+
+/** Zoning for a parcel in Matthews or Mint Hill, or null. */
+export async function meckTownZoning(parcel) {
+  const q = atParcel(parcel)
+  const [mt, mh] = await Promise.all([
+    Promise.all(MATTHEWS_LAYERS.map((n) => getJSON(`${MATTHEWS}/${n}/FeatureServer/0/query`, { ...q, outFields: 'ZONE_DES' }).catch(() => null))),
+    getJSON(`${MINT_HILL}/query`, { ...q, outFields: 'ZoneDes,Petition' }).catch(() => null),
+  ])
+  const mtHit = mt.map((r) => r?.features?.[0]?.attributes?.ZONE_DES).find(Boolean)
+  if (mtHit) return { town: 'Matthews', ...parseCode(mtHit), key: parseCode(mtHit).base.replace(/^RVS$/, 'R-VS') }
+  const mhAttrs = mh?.features?.[0]?.attributes
+  if (mhAttrs?.ZoneDes) {
+    const p = parseCode(mhAttrs.ZoneDes)
+    return { town: 'Mint Hill', ...p, key: p.base === 'R' ? 'MH:R' : null, petition: mhAttrs.Petition || null }
+  }
+  return null
+}
+
+/** Matthews: approved conditional rezonings to the scenario district (R-x(CD), or R-VS areas). */
+export async function matthewsApprovalContext(parcel, code) {
+  const c = turf.pointOnFeature(parcel).geometry.coordinates
+  const isVS = code === 'R-VS'
+  const layer = isVS ? 'Conditional_Only_District' : 'Traditional_Residential_Districts'
+  const where = isVS ? "ZONE_DES IN ('R-VS','RVS')" : `ZONE_DES LIKE '${code}%(CD)'`
+  const [near, roads, zones] = await Promise.allSettled([
+    getJSON(`${MATTHEWS}/${layer}/FeatureServer/0/query`, { ...nearPoint(c), where, outFields: 'ZONE_DES,CaseFile,Date', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0002, f: 'json' }),
+    tigerStreets(parcel, 600),
+    Promise.all(MATTHEWS_LAYERS.map((n) => getJSON(`${MATTHEWS}/${n}/FeatureServer/0/query`, { geometry: padded(parcel, 100), geometryType: 'esriGeometryEnvelope', inSR: 4326, spatialRel: 'esriSpatialRelIntersects', outFields: 'ZONE_DES', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0001, f: 'json' }).catch(() => null)))
+      .then((rs) => ({ features: rs.flatMap((r) => r?.features || []) })),
+  ])
+  const precedents = (ok(near)?.features || []).filter((f) => f.geometry?.rings?.length).map((f) => {
+    const a = f.attributes, shape = turf.polygon(f.geometry.rings)
+    const caseNo = String(a.CaseFile || '').trim()
+    return {
+      petition: caseNo || 'Case not listed', requested: a.ZONE_DES, status: 'Approved', decided: null,
+      year: a.Date ? new Date(a.Date).getFullYear() : yearOf(caseNo), acres: turf.area(shape) / 4046.86, lots: null, from: null,
+      miles: turf.distance(c, turf.pointOnFeature(shape), { units: 'miles' }), shape,
+    }
+  }).filter((p) => p.acres >= 0.5 && !turf.booleanPointInPolygon(turf.point(c), p.shape)).sort((a, b) => a.miles - b.miles)
+  const { frontage, nearestRoad } = frontageFrom(parcel, ok(roads) || [])
+  const neighbors = neighborsFrom(ok(zones)?.features || [], 'ZONE_DES', parcel)
+  const intense = neighbors.filter((d) => /^(R-9|R-VS|RVS|SRN|C-MF|MUD|R-12MF|R-15MF|B-|O|I-|HUC|ENT|CRC)/.test(d))
+  return { code, town: 'Matthews', precedents, cityCounts: {}, pending: [], frontage, nearestRoad, neighbors, intenseNeighbors: intense, mapOnly: true, failed: [near, roads, zones].filter((r) => !ok(r)).length }
+}
+
+/** Mint Hill: conditional R rezonings nearby, with petition numbers and rezone dates. */
+export async function mintHillApprovalContext(parcel, code) {
+  const c = turf.pointOnFeature(parcel).geometry.coordinates
+  const [near, roads, zones] = await Promise.allSettled([
+    getJSON(`${MINT_HILL}/query`, { ...nearPoint(c), where: "ZoneDes LIKE 'R%(CD)'", outFields: 'ZoneDes,Petition,RezoneDate', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0002, f: 'json' }),
+    tigerStreets(parcel, 600),
+    getJSON(`${MINT_HILL}/query`, { geometry: padded(parcel, 100), geometryType: 'esriGeometryEnvelope', inSR: 4326, spatialRel: 'esriSpatialRelIntersects', outFields: 'ZoneDes', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0001, f: 'json' }),
+  ])
+  const precedents = (ok(near)?.features || []).filter((f) => f.geometry?.rings?.length).map((f) => {
+    const a = f.attributes, shape = turf.polygon(f.geometry.rings)
+    const caseNo = String(a.Petition || '').trim()
+    return {
+      petition: caseNo || 'Petition not listed', requested: String(a.ZoneDes || '').trim(), status: 'Approved', decided: null,
+      year: a.RezoneDate ? new Date(a.RezoneDate).getFullYear() : yearOf(caseNo), acres: turf.area(shape) / 4046.86, lots: null, from: null,
+      miles: turf.distance(c, turf.pointOnFeature(shape), { units: 'miles' }), shape,
+    }
+  }).filter((p) => p.acres >= 0.5 && !turf.booleanPointInPolygon(turf.point(c), p.shape)).sort((a, b) => a.miles - b.miles)
+  const { frontage, nearestRoad } = frontageFrom(parcel, ok(roads) || [])
+  const neighbors = neighborsFrom(ok(zones)?.features || [], 'ZoneDes', parcel)
+  const intense = neighbors.filter((d) => /\(CD\)|PUD|B-|O-A|I-G|^I\b|R-MH/.test(d))
+  return { code, town: 'Mint Hill', precedents, cityCounts: {}, pending: [], frontage, nearestRoad, neighbors, intenseNeighbors: intense, mapOnly: true, failed: [near, roads, zones].filter((r) => !ok(r)).length }
+}
