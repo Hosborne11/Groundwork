@@ -128,7 +128,7 @@ export async function meckTownZoning(parcel) {
     const p = parseCode(mhAttrs.ZoneDes)
     return { town: 'Mint Hill', ...p, key: p.base === 'R' ? 'MH:R' : null, petition: mhAttrs.Petition || null }
   }
-  return null
+  return huntersvilleZoning(parcel).catch(() => null)
 }
 
 /** Matthews: approved conditional rezonings to the scenario district (R-x(CD), or R-VS areas). */
@@ -179,4 +179,80 @@ export async function mintHillApprovalContext(parcel, code) {
   const neighbors = neighborsFrom(ok(zones)?.features || [], 'ZoneDes', parcel)
   const intense = neighbors.filter((d) => /\(CD\)|PUD|B-|O-A|I-G|^I\b|R-MH/.test(d))
   return { code, town: 'Mint Hill', precedents, cityCounts: {}, pending: [], frontage, nearestRoad, neighbors, intenseNeighbors: intense, mapOnly: true, failed: [near, roads, zones].filter((r) => !ok(r)).length }
+}
+
+/* ---------- Huntersville (ArcGIS Online) ---------- */
+const HV = 'https://services7.arcgis.com/CADYoH7VVBN3BQHU/arcgis/rest/services'
+const HV_ZONING = `${HV}/huntersville_zoning_current/FeatureServer/0`
+const HV_ARCHIVE = `${HV}/Archived_Rezonings_v2/FeatureServer/0`
+// "NR(TND-O)(CD)" -> { base: 'NR', conditional: true }; Huntersville's "R" is keyed "HV:R"
+const hvParse = (raw) => {
+  const t = String(raw || '').trim()
+  const base = t.split('(')[0].trim()
+  return { raw: t, base, conditional: /\(CD\)/i.test(t), key: base === 'R' ? 'HV:R' : base }
+}
+const hvResult = (r) => {
+  const t = String(r || '').trim().toLowerCase()
+  return t.startsWith('appr') ? 'Approved' : t.startsWith('den') ? 'Denied' : t.startsWith('with') ? 'Withdrawn' : 'Outcome not recorded'
+}
+
+export async function huntersvilleZoning(parcel) {
+  const r = await getJSON(`${HV_ZONING}/query`, { ...atParcel(parcel), outFields: 'ZONE_DES,ZONE_PETIT,ETJ' }).catch(() => null)
+  const a = r?.features?.[0]?.attributes
+  if (!a?.ZONE_DES) return null
+  const p = hvParse(a.ZONE_DES)
+  return { town: 'Huntersville', ...p, petition: String(a.ZONE_PETIT || '').trim() || null, etj: /etj/i.test(String(a.ETJ || '')) }
+}
+
+/** Huntersville: rezonings to the same district nearby, with outcomes from the town's archive. */
+export async function huntersvilleApprovalContext(parcel, key) {
+  const code = key === 'HV:R' ? 'R' : key
+  const c = turf.pointOnFeature(parcel).geometry.coordinates
+  const [arch, cur, record, roads, zones] = await Promise.allSettled([
+    getJSON(`${HV_ARCHIVE}/query`, { ...nearPoint(c), where: '1=1', outFields: 'CaseNumber,Year,OldZoning,NewZoning,Result', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0002, f: 'json' }),
+    getJSON(`${HV_ZONING}/query`, { ...nearPoint(c), where: "ZONE_DES LIKE '%(CD)%'", outFields: 'ZONE_DES,ZONE_PETIT,REZONE_DAT', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0002, f: 'json' }),
+    getJSON(`${HV_ARCHIVE}/query`, { where: '1=1', outFields: 'Result', groupByFieldsForStatistics: 'Result', outStatistics: JSON.stringify([{ statisticType: 'count', onStatisticField: 'FID', outStatisticFieldName: 'n' }]), f: 'json' }),
+    tigerStreets(parcel, 600),
+    getJSON(`${HV_ZONING}/query`, { geometry: padded(parcel, 100), geometryType: 'esriGeometryEnvelope', inSR: 4326, spatialRel: 'esriSpatialRelIntersects', outFields: 'ZONE_DES', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0001, f: 'json' }),
+  ])
+  const toCase = (shape, props) => ({ ...props, acres: turf.area(shape) / 4046.86, lots: null, miles: turf.distance(c, turf.pointOnFeature(shape), { units: 'miles' }), shape })
+  const seen = new Set()
+  const precedents = []
+  // archive (through 2024): exact district match on any of the new zoning's parts ("HC(CD) & NR")
+  for (const f of ok(arch)?.features || []) {
+    const a = f.attributes
+    if (!f.geometry?.rings?.length) continue
+    const parts = String(a.NewZoning || '').split(/&|,|\//).map((x) => hvParse(x).base)
+    if (!parts.includes(code)) continue
+    const id = String(a.CaseNumber || '').trim()
+    if (id && seen.has(id)) continue
+    if (id) seen.add(id)
+    precedents.push(toCase(turf.polygon(f.geometry.rings), {
+      petition: id || 'Case not listed', requested: String(a.NewZoning || '').trim(), status: hvResult(a.Result), decided: null,
+      year: Number(a.Year) || yearOf(id), from: String(a.OldZoning || '').trim() || null,
+    }))
+  }
+  // newer conditional rezonings on the current map (2025 on), not already in the archive
+  for (const f of ok(cur)?.features || []) {
+    const a = f.attributes
+    const p = hvParse(a.ZONE_DES)
+    const id = String(a.ZONE_PETIT || '').trim()
+    if (p.base !== code || !f.geometry?.rings?.length || (id && seen.has(id))) continue
+    if (id) seen.add(id)
+    precedents.push(toCase(turf.polygon(f.geometry.rings), {
+      petition: id || 'Petition not listed', requested: p.raw, status: 'Approved', decided: null,
+      year: a.REZONE_DAT ? new Date(a.REZONE_DAT).getFullYear() : yearOf(id), from: null,
+    }))
+  }
+  const near = precedents.filter((p) => p.acres >= 0.5 && !turf.booleanPointInPolygon(turf.point(c), p.shape)).sort((a, b) => a.miles - b.miles)
+  // the town's whole archive: how rezonings have ended
+  const tally = {}
+  for (const f of ok(record)?.features || []) { const k = hvResult(f.attributes.Result); tally[k] = (tally[k] || 0) + f.attributes.n }
+  const recordNote = Object.keys(tally).length
+    ? `Huntersville’s rezoning archive (through 2024) records ${['Approved', 'Denied', 'Withdrawn'].filter((k) => tally[k]).map((k) => `${tally[k]} ${k.toLowerCase()}`).join(', ')}${tally['Outcome not recorded'] ? `, plus ${tally['Outcome not recorded']} without an outcome` : ''}.`
+    : null
+  const { frontage, nearestRoad } = frontageFrom(parcel, ok(roads) || [])
+  const neighbors = neighborsFrom(ok(zones)?.features || [], 'ZONE_DES', parcel)
+  const intense = neighbors.filter((d) => /^(NR|TND|TOD|NC|TC|CB|HC|CI|SP|VS)/.test(d))
+  return { code, town: 'Huntersville', precedents: near, cityCounts: {}, pending: [], recordNote, frontage, nearestRoad, neighbors, intenseNeighbors: intense, mapOnly: false, failed: [arch, cur, roads, zones].filter((r) => !ok(r)).length }
 }

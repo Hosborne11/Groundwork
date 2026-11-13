@@ -197,7 +197,7 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
     ? (uZoning.town === 'Indian Trail' && IT_RULES[uZoning.code] && !IT_RULES[uZoning.code].apartment ? { name: 'Indian Trail', code: uZoning.code, rule: IT_RULES[uZoning.code], source: IT_SOURCE, kind: 'single-family' }
       : uZoning.town === 'Monroe' && MONROE_RULES[uZoning.code] ? { name: 'Monroe', code: uZoning.code, rule: MONROE_RULES[uZoning.code], source: TOWN_SOURCES.Monroe, kind: 'residential' } : null)
     : concordZone && CONCORD_RULES[concordZone] ? { name: 'Concord', code: concordZone, rule: CONCORD_RULES[concordZone], source: TOWN_SOURCES.Concord, kind: 'residential' }
-    : meckTown?.key && TOWN_RULES[meckTown.key] && !meckTown.conditional && !TOWN_RULES[meckTown.key].conditionalOnly
+    : meckTown?.key && TOWN_RULES[meckTown.key] && !meckTown.conditional && !TOWN_RULES[meckTown.key].conditionalOnly && !TOWN_RULES[meckTown.key].noDraft
       ? { name: meckTown.town, code: meckTown.key, rule: TOWN_RULES[meckTown.key], source: TOWN_SOURCES[meckTown.town], kind: 'residential' } : null
   const itCode = town?.code || null // (kept for the site report)
   const itRule = town?.rule || null
@@ -269,7 +269,7 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
         <section className="section">
           <h3>Zoning</h3>
           <div className="zone-head"><strong className="zone-code">{meckTown.raw}</strong> <span>Town of {meckTown.town}</span></div>
-          <p className="muted-small">{meckTown.conditional ? 'Conditional zoning: what can be built is set by the approved site plan and its conditions, so Groundwork doesn’t draft it.' : `Groundwork drafts ${meckTown.town}’s single-family residential districts; this district isn’t one of them.`}{meckTown.petition ? ` Petition ${meckTown.petition}.` : ''}</p>
+          <p className="muted-small">{meckTown.conditional ? 'Conditional zoning: what can be built is set by the approved site plan and its conditions, so Groundwork doesn’t draft it.' : TOWN_RULES[meckTown.key]?.noDraft || `Groundwork drafts ${meckTown.town}’s single-family residential districts; this district isn’t one of them.`}{meckTown.petition ? ` Petition ${meckTown.petition}.` : ''}{meckTown.etj ? ' The parcel is outside town limits, in the town’s extraterritorial jurisdiction.' : ''}</p>
         </section>
       )}
 
@@ -280,8 +280,9 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
           <dl className="facts">
             <dt>Min lot area</dt><dd>{itRule.minLotSf.toLocaleString()} sq ft</dd>
             <dt>Min lot width</dt><dd>{itRule.minWidthFt} ft</dd>
-            {itRule.maxDensity && <><dt>Max density</dt><dd>{itRule.maxDensity} units per acre</dd></>}
-            <dt>Front setback</dt><dd>{itRule.frontFt} ft{itRule.frontMajorFt ? ` (${itRule.frontMajorFt} ft on thoroughfares)` : ''}</dd>
+            {itRule.maxDensity && <><dt>Max density</dt><dd>{itRule.densityNote ? itRule.densityNote.charAt(0).toUpperCase() + itRule.densityNote.slice(1) : `${itRule.maxDensity} units per acre`}</dd></>}
+            {!itRule.maxDensity && itRule.densityNote && <><dt>Lots</dt><dd>{itRule.densityNote.charAt(0).toUpperCase() + itRule.densityNote.slice(1)}</dd></>}
+            <dt>Front setback</dt><dd>{itRule.frontFt != null ? `${itRule.frontFt} ft${itRule.frontMajorFt ? ` (${itRule.frontMajorFt} ft on thoroughfares)` : ''}` : 'Set by build-to lines (drafts assume 20 ft)'}</dd>
             <dt>Side / rear setback</dt><dd>{itRule.sideFt} ft / {itRule.rearFt} ft</dd>
             <dt>Max height</dt><dd>{itRule.stories ? `${itRule.stories} stories` : `${itRule.heightFt} ft`}{itRule.coverage ? ` · coverage ${itRule.coverage}` : ''}</dd>
             {itRule.apt && <><dt>Apartments</dt><dd>Allowed, up to {itRule.apt.density} units per acre and {itRule.apt.stories} stories</dd></>}

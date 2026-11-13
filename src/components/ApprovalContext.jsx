@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react'
 import * as turf from '@turf/turf'
 import { approvalContext } from '../lib/charlotte'
 import { itApprovalContext } from '../lib/indianTrail'
-import { concordApprovalContext, monroeApprovalContext, matthewsApprovalContext, mintHillApprovalContext } from '../lib/towns'
+import { concordApprovalContext, monroeApprovalContext, matthewsApprovalContext, mintHillApprovalContext, huntersvilleApprovalContext } from '../lib/towns'
 import { districtLabel } from '../data/towns'
 
 // each town's own lookup; Charlotte uses its petition history
-const LOOKUP = { 'Indian Trail': itApprovalContext, Concord: concordApprovalContext, Monroe: monroeApprovalContext, Matthews: matthewsApprovalContext, 'Mint Hill': mintHillApprovalContext }
+const LOOKUP = { 'Indian Trail': itApprovalContext, Concord: concordApprovalContext, Monroe: monroeApprovalContext, Matthews: matthewsApprovalContext, 'Mint Hill': mintHillApprovalContext, Huntersville: huntersvilleApprovalContext }
 import { policyFit, jurisdictionOf } from '../data/charlotteUdo'
 
 const monthYear = (d) => d?.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
@@ -67,7 +67,11 @@ export default function ApprovalContext({ parcel, code: key, placeType, editor, 
       {
         tone: ctx.precedents.some((p) => p.status === 'Approved') || ctx.conditionalCounts?.within2 > 0 ? 'good' : 'neutral',
         title: 'Nearby precedents',
-        text: ctx.conditionalCounts
+        text: ctx.recordNote
+          ? (ctx.precedents.length
+            ? `${plural(ctx.precedents.length, 'rezoning')} to ${code} within 5 miles in ${poss(ctx.town)} records (${tally(ctx.precedents)})${(() => { const y = Math.max(...ctx.precedents.map((p) => p.year || 0)); return y ? `, the most recent from ${y}` : '' })()}; ${within2.length ? `${within2.length} within 2 miles` : 'none within 2 miles'}.`
+            : `No rezonings to ${code} within 5 miles in ${poss(ctx.town)} records.`)
+          : ctx.conditionalCounts
           ? `${ctx.conditionalCounts.within5.toLocaleString()} parcels within 5 miles carry conditional zoning (CD) on ${poss(ctx.town)} map, about ${Math.round(ctx.conditionalCounts.acres5).toLocaleString()} acres; ${ctx.conditionalCounts.within2.toLocaleString()} within 2 miles. ${poss(ctx.town)} map doesn’t record case numbers or which district a conditional rezoning parallels, so this shows how common conditional rezonings are nearby, not approvals to ${code} specifically.`
           : ctx.mapOnly
           ? (ctx.precedents.length
@@ -81,7 +85,8 @@ export default function ApprovalContext({ parcel, code: key, placeType, editor, 
         tone: 'neutral', title: 'Citywide record',
         text: `Charlotte has decided ${plural(cityTotal, `${code} request`)} since the UDO: ${Object.entries(city).map(([k, n]) => `${n} ${k.toLowerCase()}`).join(', ')}. Requests losing support are usually withdrawn before a vote rather than denied.`,
       }] : []),
-      ...(ctx.pending.length ? [{ tone: 'neutral', title: 'In process nearby', text: `${plural(ctx.pending.length, 'petition')} for ${code} currently in process within 5 miles.` }] : []),
+      ...(ctx.recordNote ? [{ tone: 'neutral', title: 'Town record', text: ctx.recordNote }] : []),
+    ...(ctx.pending.length ? [{ tone: 'neutral', title: 'In process nearby', text: `${plural(ctx.pending.length, 'petition')} for ${code} currently in process within 5 miles.` }] : []),
       {
         tone: ctx.frontage?.arterial ? 'good' : isN2 || ctx.nearestRoad ? 'warn' : 'neutral',
         title: 'Street frontage',

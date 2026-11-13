@@ -64,9 +64,25 @@ export const MINT_HILL_RULES = {
 }
 export const MINT_HILL_ORDER = ['MH:R', 'MH:R-CD']
 
-export const TOWN_RULES = { ...CONCORD_RULES, ...MONROE_RULES, ...MATTHEWS_RULES, ...MINT_HILL_RULES }
-export const TOWN_ORDERS = { Concord: CONCORD_ORDER, Monroe: MONROE_ORDER, Matthews: MATTHEWS_ORDER, 'Mint Hill': MINT_HILL_ORDER }
-export const TOWN_SOURCES = { Concord: CONCORD_SOURCE, Monroe: MONROE_SOURCE, Matthews: MATTHEWS_SOURCE, 'Mint Hill': MINT_HILL_SOURCE }
-export const TOWN_PLANS = { Concord: '2030 Land Use Plan', Monroe: 'Forward Monroe plan', Matthews: 'Envision Matthews land use plan', 'Mint Hill': 'Comprehensive Plan and Future Land Use map' }
+// Town of Huntersville Zoning Ordinance, Article 3.2 (and TA25-08): density, not lot size, governs.
+// R and TR: conservation subdivision lots (20,000 sq ft, 90 ft wide) with a sliding density scale;
+// the caps below are the maximums with the open space bonus (R: 0.9 units/acre at about 45% open
+// space; TR: 1.5 at about 40%). NR: lots average at least 60 ft wide, none under 50 ft, with no
+// minimum lot area. GR exists to complete existing subdivisions, so it isn't drafted. Huntersville
+// sets build-to lines rather than fixed front setbacks, so drafts keep the 20 ft assumption.
+export const HUNTERSVILLE_SOURCE = 'Huntersville Zoning Ordinance Article 3.2 (density caps include the maximum open space bonus)'
+const hv = { jurisdiction: 'Huntersville', bonusTo: null, heightFt: 35 }
+export const HUNTERSVILLE_RULES = {
+  'HV:R': { ...hv, label: 'R', minLotSf: 20000, minWidthFt: 90, maxDensity: 0.9, sideFt: 10, rearFt: 25, densityNote: 'up to 0.9 units per acre with about 45% open space (0.3 at the 25% minimum)' },
+  TR: { ...hv, minLotSf: 20000, minWidthFt: 90, maxDensity: 1.5, sideFt: 10, rearFt: 25, densityNote: 'up to 1.5 units per acre with about 40% open space (0.5 at the 20% minimum)' },
+  NR: { ...hv, minLotSf: 5000, minWidthFt: 50, sideFt: 5, rearFt: 20, densityNote: 'no minimum lot area; lots average at least 60 ft wide' },
+  GR: { ...hv, minLotSf: 20000, minWidthFt: 100, noDraft: 'GR exists to complete existing conventional subdivisions and isn’t used for new projects, so Groundwork doesn’t draft it.' },
+}
+export const HUNTERSVILLE_ORDER = ['HV:R', 'TR', 'NR']
+
+export const TOWN_RULES = { ...CONCORD_RULES, ...MONROE_RULES, ...MATTHEWS_RULES, ...MINT_HILL_RULES, ...HUNTERSVILLE_RULES }
+export const TOWN_ORDERS = { Concord: CONCORD_ORDER, Monroe: MONROE_ORDER, Matthews: MATTHEWS_ORDER, 'Mint Hill': MINT_HILL_ORDER, Huntersville: HUNTERSVILLE_ORDER }
+export const TOWN_SOURCES = { Concord: CONCORD_SOURCE, Monroe: MONROE_SOURCE, Matthews: MATTHEWS_SOURCE, 'Mint Hill': MINT_HILL_SOURCE, Huntersville: HUNTERSVILLE_SOURCE }
+export const TOWN_PLANS = { Concord: '2030 Land Use Plan', Monroe: 'Forward Monroe plan', Matthews: 'Envision Matthews land use plan', 'Mint Hill': 'Comprehensive Plan and Future Land Use map', Huntersville: '2040 Community Plan' }
 // what a district is called on screen (Mint Hill's keys carry a town prefix)
 export const districtLabel = (code) => TOWN_RULES[code]?.label || code
