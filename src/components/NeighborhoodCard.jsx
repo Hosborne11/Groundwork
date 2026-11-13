@@ -670,7 +670,7 @@ export default function NeighborhoodCard({ parcel, parts, code: zonedCode, place
             </>}
             {town === 'Indian Trail' && <option value="MFR">If rezoned to MFR (apartments)</option>}
             {/* districts that allow both lots and apartments (Concord RC, Monroe RHD) */}
-            {upzoneOptions(zonedCode).filter((c) => N1[c].apt).map((c) => <option key={`${c}|apt`} value={`${c}|apt`}>If rezoned to {c} (apartments, {N1[c].apt.density} units/ac)</option>)}
+            {upzoneOptions(zonedCode).filter((c) => N1[c].apt).map((c) => <option key={`${c}|apt`} value={`${c}|apt`}>If rezoned to {dl(c)} (apartments, {N1[c].apt.density} units/ac)</option>)}
           </select>
         </label>
       )}
