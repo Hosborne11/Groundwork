@@ -260,7 +260,7 @@ export async function huntersvilleApprovalContext(parcel, key) {
 
 /* ---------- Mecklenburg County's towns zoning layer (Pineville; Cornelius and Davidson later) ---------- */
 const MECK_TOWNS = 'https://meckgis.mecklenburgcountync.gov/server/rest/services/UnincorporatedCountyandTownsZoning/FeatureServer/0'
-const MECK_PREFIX = { PINEVILLE: ['Pineville', 'PV:'] }
+const MECK_PREFIX = { PINEVILLE: ['Pineville', 'PV:'], CORNELIUS: ['Cornelius', 'CO:'], DAVIDSON: ['Davidson', 'DV:'] }
 
 /** Zoning for a parcel in a town covered only by the county's layer. */
 export async function meckCountyZoning(parcel) {
@@ -272,12 +272,16 @@ export async function meckCountyZoning(parcel) {
   return { town: town[0], ...p, key: `${town[1]}${p.base}` }
 }
 
-/** Pineville: areas carrying the scenario district within 5 miles (the county layer has no case data). */
-export async function pinevilleApprovalContext(parcel, key) {
-  const code = key.replace(/^PV:/, '')
+export const pinevilleApprovalContext = (parcel, key) => meckTownAreasContext(parcel, key, 'PINEVILLE', /^(R-7|R-MF|RMX|DC|B-|O-|G-I)/)
+export const corneliusApprovalContext = (parcel, key) => meckTownAreasContext(parcel, key, 'CORNELIUS', /^(NR|NMX|WMX|TC|VC|HC|BC|CO|IC|CZ)/)
+
+/** Towns on the county layer: areas carrying the scenario district within 5 miles (no case data). */
+async function meckTownAreasContext(parcel, key, munic, hot) {
+  const code = key.replace(/^[A-Z]{2}:/, '')
+  const town = MECK_PREFIX[munic][0]
   const c = turf.pointOnFeature(parcel).geometry.coordinates
   const [near, roads, zones] = await Promise.allSettled([
-    getJSON(`${MECK_TOWNS}/query`, { ...nearPoint(c), where: `munic = 'PINEVILLE' AND zone_des LIKE '${code}%'`, outFields: 'zone_des', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0002, f: 'json' }),
+    getJSON(`${MECK_TOWNS}/query`, { ...nearPoint(c), where: `munic = '${munic}' AND zone_des LIKE '${code}%'`, outFields: 'zone_des', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0002, f: 'json' }),
     tigerStreets(parcel, 600),
     getJSON(`${MECK_TOWNS}/query`, { geometry: padded(parcel, 100), geometryType: 'esriGeometryEnvelope', inSR: 4326, spatialRel: 'esriSpatialRelIntersects', outFields: 'zone_des', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0001, f: 'json' }),
   ])
@@ -288,8 +292,8 @@ export async function pinevilleApprovalContext(parcel, key) {
   }).filter((p) => p.acres >= 1 && !turf.booleanPointInPolygon(turf.point(c), p.shape)).sort((a, b) => a.miles - b.miles)
   const { frontage, nearestRoad } = frontageFrom(parcel, ok(roads) || [])
   const neighbors = neighborsFrom(ok(zones)?.features || [], 'zone_des', parcel)
-  const intense = neighbors.filter((d) => /^(R-7|R-MF|RMX|DC|B-|O-|G-I)/.test(d))
-  return { code: key, town: 'Pineville', mapName: 'Mecklenburg County’s map', precedents, cityCounts: {}, pending: [], frontage, nearestRoad, neighbors, intenseNeighbors: intense, mapOnly: true, zonedAreas: true, failed: [near, roads, zones].filter((r) => !ok(r)).length }
+  const intense = neighbors.filter((d) => hot.test(d))
+  return { code: key, town, mapName: 'Mecklenburg County’s map', precedents, cityCounts: {}, pending: [], frontage, nearestRoad, neighbors, intenseNeighbors: intense, mapOnly: true, zonedAreas: true, failed: [near, roads, zones].filter((r) => !ok(r)).length }
 }
 
 /* ---------- Kannapolis (Cabarrus County's town zoning layer 3) ---------- */

@@ -154,9 +154,32 @@ export const STALLINGS_RULES = {
 }
 export const STALLINGS_ORDER = ['SFR-1', 'SFR-2', 'SFR-3']
 
-export const TOWN_RULES = { ...CONCORD_RULES, ...MONROE_RULES, ...MATTHEWS_RULES, ...MINT_HILL_RULES, ...HUNTERSVILLE_RULES, ...PINEVILLE_RULES, ...KANNAPOLIS_RULES, ...HARRISBURG_RULES, ...WAXHAW_RULES, ...STALLINGS_RULES }
-export const TOWN_ORDERS = { Concord: CONCORD_ORDER, Monroe: MONROE_ORDER, Matthews: MATTHEWS_ORDER, 'Mint Hill': MINT_HILL_ORDER, Huntersville: HUNTERSVILLE_ORDER, Pineville: PINEVILLE_ORDER, Kannapolis: KANNAPOLIS_ORDER, Harrisburg: HARRISBURG_ORDER, Waxhaw: WAXHAW_ORDER, Stallings: STALLINGS_ORDER }
-export const TOWN_SOURCES = { Concord: CONCORD_SOURCE, Monroe: MONROE_SOURCE, Matthews: MATTHEWS_SOURCE, 'Mint Hill': MINT_HILL_SOURCE, Huntersville: HUNTERSVILLE_SOURCE, Pineville: PINEVILLE_SOURCE, Kannapolis: KANNAPOLIS_SOURCE, Harrisburg: HARRISBURG_SOURCE, Waxhaw: WAXHAW_SOURCE, Stallings: STALLINGS_SOURCE }
-export const TOWN_PLANS = { Concord: '2030 Land Use Plan', Monroe: 'Forward Monroe plan', Matthews: 'Envision Matthews land use plan', 'Mint Hill': 'Comprehensive Plan and Future Land Use map', Huntersville: '2040 Community Plan', Pineville: 'Comprehensive Plan and Residential Overlay District', Kannapolis: 'Comprehensive Plan', Harrisburg: 'Land Use Plan', Waxhaw: 'Comprehensive Plan', Stallings: 'Comprehensive Land Use Plan' }
+// Town of Cornelius Land Development Code (Feb 16, 2026), §4.4.4 Table of Dimensional Requirements
+// (RP, GR, NR). Inside the Lake Norman watershed's low-impervious option, single-family is capped at
+// 2 units/acre with half-acre lots (§4.2). Keys carry "CO:" since Huntersville also has GR and NR.
+export const CORNELIUS_SOURCE = 'Cornelius Land Development Code §4.4.4 (Feb 2026); in the Lake Norman watershed, single-family is capped at 2 units/acre on half-acre lots'
+const co = { jurisdiction: 'Cornelius', bonusTo: null, heightFt: 35 }
+export const CORNELIUS_RULES = {
+  'CO:RP': { ...co, label: 'RP', minLotSf: 130680, minWidthFt: 60, frontFt: 50, sideFt: 15, rearFt: 50 },
+  'CO:GR': { ...co, label: 'GR', minLotSf: 21780, minWidthFt: 60, frontFt: 25, sideFt: 10, rearFt: 25 },
+  'CO:NR': { ...co, label: 'NR', minLotSf: 14520, minWidthFt: 50, frontFt: 10, sideFt: 10, rearFt: 25, heightFt: 26 },
+}
+export const CORNELIUS_ORDER = ['CO:RP', 'CO:GR', 'CO:NR']
+
+// Town of Davidson Planning Ordinance (Feb 25, 2025), Section 2.2 Planning Areas: form-based. Areas
+// regulate building types, setbacks, and open space (e.g. Neighborhood General: 20% open space, "no
+// density requirements"), with lot standards set by building type, so Groundwork shows the planning
+// area but doesn't draft yield. Keys carry "DV:".
+const dvNote = 'Davidson regulates by building type, setbacks, and open space rather than lot size or density (Neighborhood General has no density limit at all), so Groundwork doesn’t draft a lot yield here. See Section 2.2 of the Davidson Planning Ordinance.'
+const dv = { jurisdiction: 'Davidson', bonusTo: null, heightFt: 35, minLotSf: 6000, minWidthFt: 50, noDraft: dvNote }
+export const DAVIDSON_RULES = {
+  'DV:R': { ...dv, label: 'R (Rural)' }, 'DV:RR': { ...dv, label: 'RR (Rural Residential)' },
+  'DV:NE': { ...dv, label: 'NE (Neighborhood Edge)' }, 'DV:NG': { ...dv, label: 'NG (Neighborhood General)' },
+}
+
+export const TOWN_RULES = { ...CONCORD_RULES, ...MONROE_RULES, ...MATTHEWS_RULES, ...MINT_HILL_RULES, ...HUNTERSVILLE_RULES, ...PINEVILLE_RULES, ...KANNAPOLIS_RULES, ...HARRISBURG_RULES, ...WAXHAW_RULES, ...STALLINGS_RULES, ...CORNELIUS_RULES, ...DAVIDSON_RULES }
+export const TOWN_ORDERS = { Concord: CONCORD_ORDER, Monroe: MONROE_ORDER, Matthews: MATTHEWS_ORDER, 'Mint Hill': MINT_HILL_ORDER, Huntersville: HUNTERSVILLE_ORDER, Pineville: PINEVILLE_ORDER, Kannapolis: KANNAPOLIS_ORDER, Harrisburg: HARRISBURG_ORDER, Waxhaw: WAXHAW_ORDER, Stallings: STALLINGS_ORDER, Cornelius: CORNELIUS_ORDER }
+export const TOWN_SOURCES = { Concord: CONCORD_SOURCE, Monroe: MONROE_SOURCE, Matthews: MATTHEWS_SOURCE, 'Mint Hill': MINT_HILL_SOURCE, Huntersville: HUNTERSVILLE_SOURCE, Pineville: PINEVILLE_SOURCE, Kannapolis: KANNAPOLIS_SOURCE, Harrisburg: HARRISBURG_SOURCE, Waxhaw: WAXHAW_SOURCE, Stallings: STALLINGS_SOURCE, Cornelius: CORNELIUS_SOURCE }
+export const TOWN_PLANS = { Concord: '2030 Land Use Plan', Monroe: 'Forward Monroe plan', Matthews: 'Envision Matthews land use plan', 'Mint Hill': 'Comprehensive Plan and Future Land Use map', Huntersville: '2040 Community Plan', Pineville: 'Comprehensive Plan and Residential Overlay District', Kannapolis: 'Comprehensive Plan', Harrisburg: 'Land Use Plan', Waxhaw: 'Comprehensive Plan', Stallings: 'Comprehensive Land Use Plan', Cornelius: 'Land Use Plan' }
 // what a district is called on screen (Mint Hill's keys carry a town prefix)
 export const districtLabel = (code) => TOWN_RULES[code]?.label || code
