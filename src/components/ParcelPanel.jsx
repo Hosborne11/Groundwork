@@ -3,6 +3,7 @@ import { openReportWindow, writeSiteReport } from '../lib/siteReport'
 import { IT_RULES, IT_SOURCE } from '../data/indianTrail'
 import { CONCORD_RULES, MONROE_RULES, TOWN_RULES, TOWN_SOURCES, districtLabel } from '../data/towns'
 import { meckTownZoning } from '../lib/towns'
+import { tigerStreets, frontageFrom } from '../lib/indianTrail'
 import * as turf from '@turf/turf'
 import { nearestSewer, nearestWater, floodShare, soilsFor, zoningAt } from '../lib/gis'
 import { charlotteZoning, placeType } from '../lib/charlotte'
@@ -114,6 +115,19 @@ async function yorkLandUseCheck(parcel) {
 const cltSewerCheck = charlotteUtility('sewer')
 const cltWaterCheck = charlotteUtility('water')
 
+// Road frontage from Census TIGER roads (every county): flags parcels no road touches
+const tc = (t) => String(t || '').toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase())
+async function frontageCheck(parcel) {
+  const roads = await tigerStreets(parcel, 600)
+  const { frontage, nearestRoad } = frontageFrom(parcel, roads)
+  if (frontage) return { tone: 'good', value: `Fronts ${frontage.name ? tc(frontage.name) : 'a road'}`, detail: `${frontage.kind.charAt(0).toUpperCase()}${frontage.kind.slice(1)} (Census road data)` }
+  if (nearestRoad) {
+    const ft = Math.round(nearestRoad.feet / 10) * 10
+    return { tone: 'flag', value: 'No road frontage', detail: `Nearest road: ${tc(nearestRoad.name) || 'unnamed'}, about ${ft.toLocaleString()} ft away. Access may depend on an easement or a neighboring parcel.` }
+  }
+  return { tone: 'watch', value: 'No road found nearby', detail: 'No road within about 600 ft in Census road data; check access.' }
+}
+
 async function floodCheck(parcel) {
   const r = await floodShare(parcel)
   if (r.pct < 0.5) return { pct: 0, polys: [], tone: 'good', value: 'Outside 100-yr floodplain', detail: 'No FEMA special flood hazard area on the parcel' }
@@ -168,6 +182,7 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
   const isUnion = p.county === 'Union'
 
   const flood = useCheck(floodCheck, parcel)
+  const frontageRow = useCheck(frontageCheck, parcel)
   const soils = useCheck(soilsCheck, parcel)
   // pipe distances only where pipes are published (Charlotte Water records, Concord mains)
   const sewer = useCheck(isMeck ? cltSewerCheck : sewerCheck, parcel, !isYork && !isUnion)
@@ -220,7 +235,7 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
       p.address && `Address: ${p.address}`,
       isMeck && cltZoning && `Zoning: ${cltZoning.code}`,
       isMeck && place && `2040 place type: ${place.name}`,
-      line('Flood', flood), line('Soils', soils), line('Sewer', sewer), line('Water', water), !isMeck && line('Zoning', cabZoning),
+      line('Frontage', frontageRow), line('Flood', flood), line('Soils', soils), line('Sewer', sewer), line('Water', water), !isMeck && line('Zoning', cabZoning),
       `Assessed: ${money(p.assessed)} · Last sale: ${sale}${deed ? ` (deed covers ${deed.count} parcels)` : ''}`,
       `Owner mailing: ${p.mail}`,
     ].filter(Boolean).join('\n')
@@ -239,7 +254,7 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
       address: p.address, owner: p.owner, mail: p.mail, county: p.county, id: p.id, acres: p.acres, vacant: p.vacant, landUse: p.landUse,
       assessed: money(p.assessed), sale: `${sale}${deed ? ` (deed covers ${deed.count} parcels)` : ''}`,
       zoning: isMeck ? cltZoning?.code : zoningCheck?.value, place: isMeck && place ? `${place.name}${place.area ? ` · ${place.area}` : ''}` : null,
-      checks: [item('Floodplain', flood), item('Soils', soils), item('Sewer', sewer), item('Water', water), item('Utilities', yUtility), item('Land use plan', yLandUse)].filter(Boolean),
+      checks: [item('Road frontage', frontageRow), item('Floodplain', flood), item('Soils', soils), item('Sewer', sewer), item('Water', water), item('Utilities', yUtility), item('Land use plan', yLandUse)].filter(Boolean),
       summary: isMeck || itCode ? draftSummary : null,
       snapshot,
     })
@@ -310,6 +325,7 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
 
       <section className="section">
         <h3>Site conditions</h3>
+        <CheckRow label="Frontage" state={frontageRow} />
         <CheckRow label="Flood" state={flood} />
         <CheckRow label="Soils" state={soils} />
         <CheckRow label="Sewer" swatch="#38A169" state={sewer} />
