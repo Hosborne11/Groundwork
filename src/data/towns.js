@@ -142,9 +142,21 @@ export const WAXHAW_RULES = {
 }
 export const WAXHAW_ORDER = ['WX:R1', 'WX:R2', 'WX:R3', 'WX:R4']
 
-export const TOWN_RULES = { ...CONCORD_RULES, ...MONROE_RULES, ...MATTHEWS_RULES, ...MINT_HILL_RULES, ...HUNTERSVILLE_RULES, ...PINEVILLE_RULES, ...KANNAPOLIS_RULES, ...HARRISBURG_RULES, ...WAXHAW_RULES }
-export const TOWN_ORDERS = { Concord: CONCORD_ORDER, Monroe: MONROE_ORDER, Matthews: MATTHEWS_ORDER, 'Mint Hill': MINT_HILL_ORDER, Huntersville: HUNTERSVILLE_ORDER, Pineville: PINEVILLE_ORDER, Kannapolis: KANNAPOLIS_ORDER, Harrisburg: HARRISBURG_ORDER, Waxhaw: WAXHAW_ORDER }
-export const TOWN_SOURCES = { Concord: CONCORD_SOURCE, Monroe: MONROE_SOURCE, Matthews: MATTHEWS_SOURCE, 'Mint Hill': MINT_HILL_SOURCE, Huntersville: HUNTERSVILLE_SOURCE, Pineville: PINEVILLE_SOURCE, Kannapolis: KANNAPOLIS_SOURCE, Harrisburg: HARRISBURG_SOURCE, Waxhaw: WAXHAW_SOURCE }
-export const TOWN_PLANS = { Concord: '2030 Land Use Plan', Monroe: 'Forward Monroe plan', Matthews: 'Envision Matthews land use plan', 'Mint Hill': 'Comprehensive Plan and Future Land Use map', Huntersville: '2040 Community Plan', Pineville: 'Comprehensive Plan and Residential Overlay District', Kannapolis: 'Comprehensive Plan', Harrisburg: 'Land Use Plan', Waxhaw: 'Comprehensive Plan' }
+// Town of Stallings Development Ordinance (adopted 2018, amended Aug 10, 2026), §8.4-2 Single-Family
+// Residential Districts: lot table and gross residential density limits (SFR-1 1.6, SFR-2 2.0,
+// SFR-3 2.9 units/acre). MFT (multi-family transitional) isn't drafted yet.
+export const STALLINGS_SOURCE = 'Stallings Development Ordinance §8.4-2 (amended August 2026)'
+const st = { jurisdiction: 'Stallings', bonusTo: null, heightFt: 35 }
+export const STALLINGS_RULES = {
+  'SFR-1': { ...st, minLotSf: 20000, minWidthFt: 100, maxDensity: 1.6, frontFt: 40, sideFt: 12, rearFt: 40 },
+  'SFR-2': { ...st, minLotSf: 13000, minWidthFt: 90, maxDensity: 2.0, frontFt: 30, sideFt: 10, rearFt: 30 },
+  'SFR-3': { ...st, minLotSf: 10000, minWidthFt: 80, maxDensity: 2.9, frontFt: 30, sideFt: 10, rearFt: 30 },
+}
+export const STALLINGS_ORDER = ['SFR-1', 'SFR-2', 'SFR-3']
+
+export const TOWN_RULES = { ...CONCORD_RULES, ...MONROE_RULES, ...MATTHEWS_RULES, ...MINT_HILL_RULES, ...HUNTERSVILLE_RULES, ...PINEVILLE_RULES, ...KANNAPOLIS_RULES, ...HARRISBURG_RULES, ...WAXHAW_RULES, ...STALLINGS_RULES }
+export const TOWN_ORDERS = { Concord: CONCORD_ORDER, Monroe: MONROE_ORDER, Matthews: MATTHEWS_ORDER, 'Mint Hill': MINT_HILL_ORDER, Huntersville: HUNTERSVILLE_ORDER, Pineville: PINEVILLE_ORDER, Kannapolis: KANNAPOLIS_ORDER, Harrisburg: HARRISBURG_ORDER, Waxhaw: WAXHAW_ORDER, Stallings: STALLINGS_ORDER }
+export const TOWN_SOURCES = { Concord: CONCORD_SOURCE, Monroe: MONROE_SOURCE, Matthews: MATTHEWS_SOURCE, 'Mint Hill': MINT_HILL_SOURCE, Huntersville: HUNTERSVILLE_SOURCE, Pineville: PINEVILLE_SOURCE, Kannapolis: KANNAPOLIS_SOURCE, Harrisburg: HARRISBURG_SOURCE, Waxhaw: WAXHAW_SOURCE, Stallings: STALLINGS_SOURCE }
+export const TOWN_PLANS = { Concord: '2030 Land Use Plan', Monroe: 'Forward Monroe plan', Matthews: 'Envision Matthews land use plan', 'Mint Hill': 'Comprehensive Plan and Future Land Use map', Huntersville: '2040 Community Plan', Pineville: 'Comprehensive Plan and Residential Overlay District', Kannapolis: 'Comprehensive Plan', Harrisburg: 'Land Use Plan', Waxhaw: 'Comprehensive Plan', Stallings: 'Comprehensive Land Use Plan' }
 // what a district is called on screen (Mint Hill's keys carry a town prefix)
 export const districtLabel = (code) => TOWN_RULES[code]?.label || code
