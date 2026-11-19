@@ -464,3 +464,26 @@ export async function cabarrusCountyApprovalContext(parcel, key) {
   const intense = neighbors.filter((d) => /^(MDR|HDR|OI|LC|GC|LI|GI)/.test(d))
   return { code: key, town: 'Cabarrus County', mapName: 'Cabarrus County’s zoning map', precedents, cityCounts: {}, pending: [], frontage, nearestRoad, neighbors, intenseNeighbors: intense, mapOnly: true, zonedAreas: true, failed: [near, roads, zones].filter((r) => !ok(r)).length }
 }
+
+/* ---------- Rock Hill (York County server's city zoning layer) ---------- */
+const ROCK_HILL_ZONING = `/gis/yorksc/${encodeURIComponent('Rock Hill Zoning')}/FeatureServer/0`
+
+/** Rock Hill: areas zoned the scenario district nearby (the layer has no case data). */
+export async function rockHillApprovalContext(parcel, key) {
+  const code = key.replace(/^RH:/, '')
+  const c = turf.pointOnFeature(parcel).geometry.coordinates
+  const [near, roads, zones] = await Promise.allSettled([
+    getJSON(`${ROCK_HILL_ZONING}/query`, { ...nearPoint(c), where: `ZONE = '${code}'`, outFields: 'ZONE', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0002, f: 'json' }),
+    tigerStreets(parcel, 600),
+    getJSON(`${ROCK_HILL_ZONING}/query`, { geometry: padded(parcel, 100), geometryType: 'esriGeometryEnvelope', inSR: 4326, spatialRel: 'esriSpatialRelIntersects', outFields: 'ZONE', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0001, f: 'json' }),
+  ])
+  const precedents = (ok(near)?.features || []).filter((f) => f.geometry?.rings?.length).map((f) => {
+    const shape = turf.polygon(f.geometry.rings)
+    return { petition: `Area zoned ${code}`, requested: code, status: 'On the map', decided: null, year: null,
+      acres: turf.area(shape) / 4046.86, lots: null, from: null, miles: turf.distance(c, turf.pointOnFeature(shape), { units: 'miles' }), shape }
+  }).filter((p) => p.acres >= 1 && !turf.booleanPointInPolygon(turf.point(c), p.shape)).sort((a, b) => a.miles - b.miles)
+  const { frontage, nearestRoad } = frontageFrom(parcel, ok(roads) || [])
+  const neighbors = neighborsFrom(ok(zones)?.features || [], 'ZONE', parcel)
+  const intense = neighbors.filter((d) => /^(SF-5|SF-8|SF-A|MFR|MF-15|MX|NO|NC|OI|LC|GC|CC|CI|MUC|DTWN|MP)/.test(d))
+  return { code: key, town: 'Rock Hill', mapName: 'Rock Hill’s zoning map', precedents, cityCounts: {}, pending: [], frontage, nearestRoad, neighbors, intenseNeighbors: intense, mapOnly: true, zonedAreas: true, failed: [near, roads, zones].filter((r) => !ok(r)).length }
+}

@@ -226,6 +226,8 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
       : uZoning.town === 'Waxhaw' && TOWN_RULES[`WX:${uZoning.code}`] ? { name: 'Waxhaw', code: `WX:${uZoning.code}`, rule: TOWN_RULES[`WX:${uZoning.code}`], source: TOWN_SOURCES.Waxhaw, kind: 'residential' } : null)
     : concordZone && CONCORD_RULES[concordZone] ? { name: 'Concord', code: concordZone, rule: CONCORD_RULES[concordZone], source: TOWN_SOURCES.Concord, kind: 'residential' }
     : kannKey ? { name: 'Kannapolis', code: kannKey, rule: TOWN_RULES[kannKey], source: TOWN_SOURCES.Kannapolis, kind: 'residential' }
+    : isYork && yZoning.status === 'done' && yZoning.town === 'Rock Hill' && TOWN_RULES[`RH:${yZoning.code}`]
+      ? { name: 'Rock Hill', code: `RH:${yZoning.code}`, rule: TOWN_RULES[`RH:${yZoning.code}`], source: TOWN_SOURCES['Rock Hill'], kind: 'residential' }
     : isYork && yZoning.status === 'done' && yZoning.source === 'York County' && !yZoning.conditional && TOWN_RULES[`YC:${yZoning.code}`]
       ? { name: 'York County', code: `YC:${yZoning.code}`, rule: TOWN_RULES[`YC:${yZoning.code}`], source: TOWN_SOURCES['York County'], kind: 'residential (unincorporated)' }
     : harrKey ? { name: 'Harrisburg', code: harrKey, rule: TOWN_RULES[harrKey], source: TOWN_SOURCES.Harrisburg, kind: 'residential' }
