@@ -49,7 +49,8 @@ export async function yorkZoning(parcel) {
     const names = await legend(LAYERS.countyZoning)
     return {
       town, incorporated: false, code: c.zone, name: names[c.zone] || null, source: 'York County',
-      conditional: !!c.ConditionalZoning && c.ConditionalZoning !== 'N', caseNumber: c.RezoningCaseNumber || null,
+      // the layer stores the flag as 1/0 (older rows may be null)
+      conditional: c.ConditionalZoning === 1 || c.ConditionalZoning === '1' || c.ConditionalZoning === 'Y', caseNumber: c.RezoningCaseNumber || null,
     }
   }
   return { town, incorporated, code: null, name: null, source: null }

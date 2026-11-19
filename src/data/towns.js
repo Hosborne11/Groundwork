@@ -177,9 +177,44 @@ export const DAVIDSON_RULES = {
   'DV:NE': { ...dv, label: 'NE (Neighborhood Edge)' }, 'DV:NG': { ...dv, label: 'NG (Neighborhood General)' },
 }
 
-export const TOWN_RULES = { ...CONCORD_RULES, ...MONROE_RULES, ...MATTHEWS_RULES, ...MINT_HILL_RULES, ...HUNTERSVILLE_RULES, ...PINEVILLE_RULES, ...KANNAPOLIS_RULES, ...HARRISBURG_RULES, ...WAXHAW_RULES, ...STALLINGS_RULES, ...CORNELIUS_RULES, ...DAVIDSON_RULES }
-export const TOWN_ORDERS = { Concord: CONCORD_ORDER, Monroe: MONROE_ORDER, Matthews: MATTHEWS_ORDER, 'Mint Hill': MINT_HILL_ORDER, Huntersville: HUNTERSVILLE_ORDER, Pineville: PINEVILLE_ORDER, Kannapolis: KANNAPOLIS_ORDER, Harrisburg: HARRISBURG_ORDER, Waxhaw: WAXHAW_ORDER, Stallings: STALLINGS_ORDER, Cornelius: CORNELIUS_ORDER }
-export const TOWN_SOURCES = { Concord: CONCORD_SOURCE, Monroe: MONROE_SOURCE, Matthews: MATTHEWS_SOURCE, 'Mint Hill': MINT_HILL_SOURCE, Huntersville: HUNTERSVILLE_SOURCE, Pineville: PINEVILLE_SOURCE, Kannapolis: KANNAPOLIS_SOURCE, Harrisburg: HARRISBURG_SOURCE, Waxhaw: WAXHAW_SOURCE, Stallings: STALLINGS_SOURCE, Cornelius: CORNELIUS_SOURCE }
-export const TOWN_PLANS = { Concord: '2030 Land Use Plan', Monroe: 'Forward Monroe plan', Matthews: 'Envision Matthews land use plan', 'Mint Hill': 'Comprehensive Plan and Future Land Use map', Huntersville: '2040 Community Plan', Pineville: 'Comprehensive Plan and Residential Overlay District', Kannapolis: 'Comprehensive Plan', Harrisburg: 'Land Use Plan', Waxhaw: 'Comprehensive Plan', Stallings: 'Comprehensive Land Use Plan', Cornelius: 'Land Use Plan' }
+// York County, SC Zoning Code (Chapter 155, amended Sept 21, 2026), unincorporated land: Table
+// 155.056-1 (lot size, single-family detached), Table 155.057-2 (lot width on minor roads), and Table
+// 155.058-1 (setbacks; front setbacks are 50 ft on major roads, 25 ft on minor roads). Keys carry "YC:".
+export const YORK_COUNTY_SOURCE = 'York County Zoning Code Tables 155.056-1, 155.057-2, 155.058-1 (amended Sept 2026)'
+const yc = { jurisdiction: 'York County', bonusTo: null, heightFt: 50 }
+export const YORK_COUNTY_RULES = {
+  'YC:RUD': { ...yc, label: 'RUD', minLotSf: 43560, minWidthFt: 100, frontFt: 25, frontMajorFt: 50, sideFt: 10, rearFt: 25 },
+  'YC:RSF-40': { ...yc, label: 'RSF-40', minLotSf: 40000, minWidthFt: 100, frontFt: 25, frontMajorFt: 50, sideFt: 10, rearFt: 25 },
+  'YC:RSF-30': { ...yc, label: 'RSF-30', minLotSf: 30000, minWidthFt: 100, frontFt: 25, frontMajorFt: 50, sideFt: 10, rearFt: 25 },
+  'YC:RMX-20': { ...yc, label: 'RMX-20', minLotSf: 20000, minWidthFt: 65, frontFt: 25, frontMajorFt: 50, sideFt: 10, rearFt: 25 },
+  'YC:RMX-10': { ...yc, label: 'RMX-10', minLotSf: 10000, minWidthFt: 50, frontFt: 25, frontMajorFt: 30, sideFt: 5, rearFt: 25 },
+  'YC:RMX-6': { ...yc, label: 'RMX-6', minLotSf: 6000, minWidthFt: 40, frontFt: 25, frontMajorFt: 25, sideFt: 5, rearFt: 20 },
+}
+export const YORK_COUNTY_ORDER = ['YC:RUD', 'YC:RSF-40', 'YC:RSF-30', 'YC:RMX-20', 'YC:RMX-10', 'YC:RMX-6']
+
+// Town of Fort Mill Zoning Ordinance (Municode, current Sept 22, 2026), Article II Secs. 1-4.
+// GR and GR-A use R-10's lot standards and allow multifamily at 10 and 8 units/acre. Planned
+// neighborhood developments (PND) are negotiated plans. Keys carry "FM:" (Matthews also has R-15).
+export const FORT_MILL_SOURCE = 'Fort Mill Zoning Ordinance Article II §§1-4 (current Sept 2026)'
+const fm = { jurisdiction: 'Fort Mill', bonusTo: null, heightFt: 35 }
+export const FORT_MILL_RULES = {
+  'FM:R-25': { ...fm, label: 'R-25', minLotSf: 25000, minWidthFt: 125, frontFt: 50, sideFt: 20, rearFt: 50 },
+  'FM:R-15': { ...fm, label: 'R-15', minLotSf: 15000, minWidthFt: 100, frontFt: 35, sideFt: 10, rearFt: 35 },
+  'FM:R-10': { ...fm, label: 'R-10', minLotSf: 10000, minWidthFt: 75, frontFt: 35, sideFt: 10, rearFt: 35 },
+  'FM:GR': { ...fm, label: 'GR', minLotSf: 10000, minWidthFt: 75, frontFt: 35, sideFt: 10, rearFt: 35, apt: { density: 10, stories: 3 } },
+  'FM:GR-A': { ...fm, label: 'GR-A', minLotSf: 10000, minWidthFt: 75, frontFt: 35, sideFt: 10, rearFt: 35, apt: { density: 8, stories: 3 } },
+}
+export const FORT_MILL_ORDER = ['FM:R-25', 'FM:R-15', 'FM:R-10', 'FM:GR', 'FM:GR-A']
+
+// City of Tega Cay: nearly all land is zoned PDD (Planned Development District), each a negotiated plan.
+export const TEGA_CAY_RULES = {
+  'TC:PDD': { jurisdiction: 'Tega Cay', label: 'PDD', bonusTo: null, heightFt: 35, minLotSf: 6000, minWidthFt: 50,
+    noDraft: 'Tega Cay zones nearly all of its land PDD (Planned Development District): each development’s lots and density are set by its own approved plan, so there are no standard lot rules for Groundwork to draft against.' },
+}
+
+export const TOWN_RULES = { ...CONCORD_RULES, ...MONROE_RULES, ...MATTHEWS_RULES, ...MINT_HILL_RULES, ...HUNTERSVILLE_RULES, ...PINEVILLE_RULES, ...KANNAPOLIS_RULES, ...HARRISBURG_RULES, ...WAXHAW_RULES, ...STALLINGS_RULES, ...CORNELIUS_RULES, ...DAVIDSON_RULES, ...YORK_COUNTY_RULES, ...FORT_MILL_RULES, ...TEGA_CAY_RULES }
+export const TOWN_ORDERS = { Concord: CONCORD_ORDER, Monroe: MONROE_ORDER, Matthews: MATTHEWS_ORDER, 'Mint Hill': MINT_HILL_ORDER, Huntersville: HUNTERSVILLE_ORDER, Pineville: PINEVILLE_ORDER, Kannapolis: KANNAPOLIS_ORDER, Harrisburg: HARRISBURG_ORDER, Waxhaw: WAXHAW_ORDER, Stallings: STALLINGS_ORDER, Cornelius: CORNELIUS_ORDER, 'York County': YORK_COUNTY_ORDER, 'Fort Mill': FORT_MILL_ORDER }
+export const TOWN_SOURCES = { Concord: CONCORD_SOURCE, Monroe: MONROE_SOURCE, Matthews: MATTHEWS_SOURCE, 'Mint Hill': MINT_HILL_SOURCE, Huntersville: HUNTERSVILLE_SOURCE, Pineville: PINEVILLE_SOURCE, Kannapolis: KANNAPOLIS_SOURCE, Harrisburg: HARRISBURG_SOURCE, Waxhaw: WAXHAW_SOURCE, Stallings: STALLINGS_SOURCE, Cornelius: CORNELIUS_SOURCE, 'York County': YORK_COUNTY_SOURCE, 'Fort Mill': FORT_MILL_SOURCE }
+export const TOWN_PLANS = { Concord: '2030 Land Use Plan', Monroe: 'Forward Monroe plan', Matthews: 'Envision Matthews land use plan', 'Mint Hill': 'Comprehensive Plan and Future Land Use map', Huntersville: '2040 Community Plan', Pineville: 'Comprehensive Plan and Residential Overlay District', Kannapolis: 'Comprehensive Plan', Harrisburg: 'Land Use Plan', Waxhaw: 'Comprehensive Plan', Stallings: 'Comprehensive Land Use Plan', Cornelius: 'Land Use Plan', 'York County': '2035 Comprehensive Plan', 'Fort Mill': 'Comprehensive Plan' }
 // what a district is called on screen (Mint Hill's keys carry a town prefix)
 export const districtLabel = (code) => TOWN_RULES[code]?.label || code

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { openReportWindow, writeSiteReport } from '../lib/siteReport'
 import { IT_RULES, IT_SOURCE } from '../data/indianTrail'
 import { CONCORD_RULES, MONROE_RULES, TOWN_RULES, TOWN_SOURCES, districtLabel } from '../data/towns'
-import { meckTownZoning } from '../lib/towns'
+import { meckTownZoning, yorkTownZoning } from '../lib/towns'
 import { tigerStreets, frontageFrom } from '../lib/indianTrail'
 import * as turf from '@turf/turf'
 import { nearestSewer, nearestWater, floodShare, soilsFor, zoningAt } from '../lib/gis'
@@ -98,7 +98,7 @@ async function yorkZoningCheck(parcel) {
     return { tone: 'none', value: z.incorporated ? `Town of ${z.town}` : 'Not mapped', detail: z.incorporated ? `${z.town} zoning isn't loaded yet; check with the town.` : 'No zoning found for this parcel.' }
   }
   const extra = [z.conditional && 'Conditional zoning', z.caseNumber && `Case ${z.caseNumber}`].filter(Boolean).join(' · ')
-  return { tone: 'none', value: `${z.code}${z.name ? ` · ${z.name}` : ''}`, detail: [`${z.source} zoning`, z.town !== 'Rock Hill' && z.town, extra].filter(Boolean).join(' · ') }
+  return { tone: 'none', value: `${z.code}${z.name ? ` · ${z.name}` : ''}`, detail: [`${z.source} zoning`, z.town !== 'Rock Hill' && z.town, extra].filter(Boolean).join(' · '), code: z.code, town: z.town, source: z.source, conditional: z.conditional }
 }
 async function yorkUtilityCheck(parcel) {
   const s = await yorkServiceProvider(parcel)
@@ -195,7 +195,10 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
   const cltZoning = useValue(charlotteZoning, parcel, isMeck)
   const place = useValue(placeType, parcel, isMeck)
   // Mecklenburg parcels outside Charlotte's zoning: Matthews and Mint Hill publish their own
-  const meckTown = useValue(meckTownZoning, parcel, isMeck && cltZoning === null)
+  const meckTown0 = useValue(meckTownZoning, parcel, isMeck && cltZoning === null)
+  // York County towns York's layers don't cover (Fort Mill, Tega Cay)
+  const yorkTown = useValue(yorkTownZoning, parcel, isYork)
+  const meckTown = meckTown0 || yorkTown // a town's own zoning layer (shown and drafted the same way)
   const deed = useValue(deedGroup, parcel)
   const [copied, setCopied] = useState(false)
   const [draftSummary, setDraftSummary] = useState(null) // the open neighborhood draft, for the site report
@@ -220,6 +223,8 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
       : uZoning.town === 'Waxhaw' && TOWN_RULES[`WX:${uZoning.code}`] ? { name: 'Waxhaw', code: `WX:${uZoning.code}`, rule: TOWN_RULES[`WX:${uZoning.code}`], source: TOWN_SOURCES.Waxhaw, kind: 'residential' } : null)
     : concordZone && CONCORD_RULES[concordZone] ? { name: 'Concord', code: concordZone, rule: CONCORD_RULES[concordZone], source: TOWN_SOURCES.Concord, kind: 'residential' }
     : kannKey ? { name: 'Kannapolis', code: kannKey, rule: TOWN_RULES[kannKey], source: TOWN_SOURCES.Kannapolis, kind: 'residential' }
+    : isYork && yZoning.status === 'done' && yZoning.source === 'York County' && !yZoning.conditional && TOWN_RULES[`YC:${yZoning.code}`]
+      ? { name: 'York County', code: `YC:${yZoning.code}`, rule: TOWN_RULES[`YC:${yZoning.code}`], source: TOWN_SOURCES['York County'], kind: 'residential (unincorporated)' }
     : harrKey ? { name: 'Harrisburg', code: harrKey, rule: TOWN_RULES[harrKey], source: TOWN_SOURCES.Harrisburg, kind: 'residential' }
     : meckTown?.key && TOWN_RULES[meckTown.key] && !meckTown.conditional && !TOWN_RULES[meckTown.key].conditionalOnly && !TOWN_RULES[meckTown.key].noDraft
       ? { name: meckTown.town, code: meckTown.key, rule: TOWN_RULES[meckTown.key], source: TOWN_SOURCES[meckTown.town], kind: 'residential' } : null

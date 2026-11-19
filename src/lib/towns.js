@@ -361,20 +361,68 @@ export const waxhawApprovalContext = (parcel, key) => unionZonedContext(parcel, 
 export const stallingsApprovalContext = (parcel, key) => unionZonedContext(parcel, key, { town: 'Stallings', layer: '/gis/union/UNION_COUNTY_LAYERS/MapServer/181', field: 'CurrentZon', code: key, intense: /^(SFR-3|MFT|TC|MU|C|I|O)/ })
 
 /** Union County town layers: parcels already zoned the scenario district nearby (no case data). */
-async function unionZonedContext(parcel, key, { town, layer, field, code, intense: hot }) {
+async function unionZonedContext(parcel, key, { town, layer, field, code, intense: hot, oid = 'OBJECTID', area = 'SHAPE.STArea()', sqftPerUnit = 1 }) {
   const c = turf.pointOnFeature(parcel).geometry.coordinates
   const stats = (miles) => getJSON(`${layer}/query`, {
     ...nearPoint(c), distance: miles, where: `${field} = '${code}'`,
-    outStatistics: JSON.stringify([{ statisticType: 'count', onStatisticField: 'OBJECTID', outStatisticFieldName: 'n' }, { statisticType: 'sum', onStatisticField: 'SHAPE.STArea()', outStatisticFieldName: 'sf' }]), f: 'json',
+    outStatistics: JSON.stringify([{ statisticType: 'count', onStatisticField: oid, outStatisticFieldName: 'n' }, { statisticType: 'sum', onStatisticField: area, outStatisticFieldName: 'sf' }]), f: 'json',
   })
   const [s2, s5, roads, zones] = await Promise.allSettled([
     stats(2), stats(5), tigerStreets(parcel, 600),
     getJSON(`${layer}/query`, { geometry: padded(parcel, 100), geometryType: 'esriGeometryEnvelope', inSR: 4326, spatialRel: 'esriSpatialRelIntersects', outFields: field, returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0001, f: 'json' }),
   ])
   const row = (r) => ok(r)?.features?.[0]?.attributes
-  const zoned = { within2: row(s2)?.n || 0, within5: row(s5)?.n || 0, acres5: (row(s5)?.sf || 0) / 43560 }
+  const zoned = { within2: row(s2)?.n || 0, within5: row(s5)?.n || 0, acres5: ((row(s5)?.sf || 0) * sqftPerUnit) / 43560 }
   const { frontage, nearestRoad } = frontageFrom(parcel, ok(roads) || [])
   const neighbors = neighborsFrom(ok(zones)?.features || [], field, parcel)
   const intense = neighbors.filter((d) => hot.test(d))
   return { code: key, town, precedents: [], cityCounts: {}, pending: [], frontage, nearestRoad, neighbors, intenseNeighbors: intense, mapOnly: true, zonedParcels: zoned, failed: [s5, roads, zones].filter((r) => !ok(r)).length }
 }
+
+/* ---------- York County, SC (unincorporated): county zoning layer with conditional flags and cases ---------- */
+const YORK_ZONING = `/gis/yorksc/${encodeURIComponent('York County Zoning (regions)')}/FeatureServer/0`
+
+/** York County: conditional rezonings to the scenario district nearby, with case numbers where recorded. */
+export async function yorkCountyApprovalContext(parcel, key) {
+  const code = key.replace(/^YC:/, '')
+  const c = turf.pointOnFeature(parcel).geometry.coordinates
+  const [near, roads, zones] = await Promise.allSettled([
+    getJSON(`${YORK_ZONING}/query`, { ...nearPoint(c), where: `zone = '${code}' AND ConditionalZoning = 1`, outFields: 'zone,ConditionalZoning,RezoningCaseNumber', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0002, f: 'json' }),
+    tigerStreets(parcel, 600),
+    getJSON(`${YORK_ZONING}/query`, { geometry: padded(parcel, 100), geometryType: 'esriGeometryEnvelope', inSR: 4326, spatialRel: 'esriSpatialRelIntersects', outFields: 'zone', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0001, f: 'json' }),
+  ])
+  const precedents = (ok(near)?.features || []).filter((f) => f.geometry?.rings?.length).map((f) => {
+    const shape = turf.polygon(f.geometry.rings), id = String(f.attributes.RezoningCaseNumber || '').trim()
+    const yy = id.match(/^(\d{2})-\d+/) // York writes cases as YY-NN ("15-35" is 2015)
+    return { petition: id || 'Case not listed', requested: `${code} (conditional)`, status: 'Approved', decided: null, year: yy ? 2000 + Number(yy[1]) : yearOf(id),
+      acres: turf.area(shape) / 4046.86, lots: null, from: null, miles: turf.distance(c, turf.pointOnFeature(shape), { units: 'miles' }), shape }
+  }).filter((p) => p.acres >= 0.5 && !turf.booleanPointInPolygon(turf.point(c), p.shape)).sort((a, b) => a.miles - b.miles)
+  const { frontage, nearestRoad } = frontageFrom(parcel, ok(roads) || [])
+  const neighbors = neighborsFrom(ok(zones)?.features || [], 'zone', parcel)
+  const intense = neighbors.filter((d) => /^(RMX|NC|GC|OI|UD|PD|LI|ID|RC)/.test(d))
+  return { code: key, town: 'York County', precedents, cityCounts: {}, pending: [], frontage, nearestRoad, neighbors, intenseNeighbors: intense, mapOnly: true, failed: [near, roads, zones].filter((r) => !ok(r)).length }
+}
+
+/* ---------- York County towns on ArcGIS Online: Fort Mill and Tega Cay ---------- */
+const FORT_MILL_ZONING = 'https://services8.arcgis.com/9DcCkxgoIscCej54/arcgis/rest/services/Town_of_Fort_Mill_Map_WFL1/FeatureServer/7'
+const TEGA_CAY_ZONING = 'https://services8.arcgis.com/h9JHFVWvWofKfQhH/arcgis/rest/services/CityofTegaCaySC_Zoning/FeatureServer/0'
+
+/** Zoning for a parcel in Fort Mill or Tega Cay (York County's own layers don't carry them). */
+export async function yorkTownZoning(parcel) {
+  const q = atParcel(parcel)
+  const [fm, tc] = await Promise.all([
+    getJSON(`${FORT_MILL_ZONING}/query`, { ...q, outFields: 'Zoning,ZoningDesc' }).catch(() => null),
+    getJSON(`${TEGA_CAY_ZONING}/query`, { ...q, outFields: 'ZoningCode' }).catch(() => null),
+  ])
+  const f = fm?.features?.[0]?.attributes
+  if (f?.Zoning?.trim()) { const p = parseCode(f.Zoning); return { town: 'Fort Mill', ...p, key: `FM:${p.base}` } }
+  const t = tc?.features?.[0]?.attributes
+  if (t?.ZoningCode?.trim()) { const p = parseCode(t.ZoningCode); return { town: 'Tega Cay', ...p, key: p.base.startsWith('PDD') ? 'TC:PDD' : `TC:${p.base}` } }
+  return null
+}
+
+// Fort Mill: hosted-layer areas are in square meters (Web Mercator), so convert to square feet
+export const fortMillApprovalContext = (parcel, key) => unionZonedContext(parcel, key, {
+  town: 'Fort Mill', layer: FORT_MILL_ZONING, field: 'Zoning', code: key.replace(/^FM:/, ''),
+  intense: /^(R-10|R-5|RT-8|GR|PND|MXU|HC|LC|GI|LI)/, oid: 'FID', area: 'Shape__Area', sqftPerUnit: 10.7639,
+})
