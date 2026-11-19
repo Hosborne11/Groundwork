@@ -212,9 +212,28 @@ export const TEGA_CAY_RULES = {
     noDraft: 'Tega Cay zones nearly all of its land PDD (Planned Development District): each development’s lots and density are set by its own approved plan, so there are no standard lot rules for Groundwork to draft against.' },
 }
 
-export const TOWN_RULES = { ...CONCORD_RULES, ...MONROE_RULES, ...MATTHEWS_RULES, ...MINT_HILL_RULES, ...HUNTERSVILLE_RULES, ...PINEVILLE_RULES, ...KANNAPOLIS_RULES, ...HARRISBURG_RULES, ...WAXHAW_RULES, ...STALLINGS_RULES, ...CORNELIUS_RULES, ...DAVIDSON_RULES, ...YORK_COUNTY_RULES, ...FORT_MILL_RULES, ...TEGA_CAY_RULES }
-export const TOWN_ORDERS = { Concord: CONCORD_ORDER, Monroe: MONROE_ORDER, Matthews: MATTHEWS_ORDER, 'Mint Hill': MINT_HILL_ORDER, Huntersville: HUNTERSVILLE_ORDER, Pineville: PINEVILLE_ORDER, Kannapolis: KANNAPOLIS_ORDER, Harrisburg: HARRISBURG_ORDER, Waxhaw: WAXHAW_ORDER, Stallings: STALLINGS_ORDER, Cornelius: CORNELIUS_ORDER, 'York County': YORK_COUNTY_ORDER, 'Fort Mill': FORT_MILL_ORDER }
-export const TOWN_SOURCES = { Concord: CONCORD_SOURCE, Monroe: MONROE_SOURCE, Matthews: MATTHEWS_SOURCE, 'Mint Hill': MINT_HILL_SOURCE, Huntersville: HUNTERSVILLE_SOURCE, Pineville: PINEVILLE_SOURCE, Kannapolis: KANNAPOLIS_SOURCE, Harrisburg: HARRISBURG_SOURCE, Waxhaw: WAXHAW_SOURCE, Stallings: STALLINGS_SOURCE, Cornelius: CORNELIUS_SOURCE, 'York County': YORK_COUNTY_SOURCE, 'Fort Mill': FORT_MILL_SOURCE }
-export const TOWN_PLANS = { Concord: '2030 Land Use Plan', Monroe: 'Forward Monroe plan', Matthews: 'Envision Matthews land use plan', 'Mint Hill': 'Comprehensive Plan and Future Land Use map', Huntersville: '2040 Community Plan', Pineville: 'Comprehensive Plan and Residential Overlay District', Kannapolis: 'Comprehensive Plan', Harrisburg: 'Land Use Plan', Waxhaw: 'Comprehensive Plan', Stallings: 'Comprehensive Land Use Plan', Cornelius: 'Land Use Plan', 'York County': '2035 Comprehensive Plan', 'Fort Mill': 'Comprehensive Plan' }
+// Union County Development Ordinance (adopted 2014; this copy amended through Jan 2018), Table 5-2
+// "R District Lot and Building Regulations - Conventional Development" (amended 1-4-2016), for
+// unincorporated land. Apartment forms use the table's land area per multi-unit dwelling. Keys
+// carry "UC:" (Matthews also has R-15 and R-20).
+export const UNION_COUNTY_SOURCE = 'Union County Development Ordinance Table 5-2 (copy amended through Jan 2018)'
+const uc = { jurisdiction: 'Union County', bonusTo: null, heightFt: 40 }
+export const UNION_COUNTY_RULES = {
+  'UC:R-40': { ...uc, label: 'R-40', minLotSf: 40000, minWidthFt: 120, frontFt: 40, sideFt: 15, rearFt: 40 },
+  'UC:RA-40': { ...uc, label: 'RA-40', minLotSf: 40000, minWidthFt: 120, frontFt: 40, sideFt: 15, rearFt: 40 },
+  'UC:R-20': { ...uc, label: 'R-20', minLotSf: 20000, minWidthFt: 100, frontFt: 40, sideFt: 12, rearFt: 40 },
+  'UC:RA-20': { ...uc, label: 'RA-20', minLotSf: 20000, minWidthFt: 100, frontFt: 40, sideFt: 12, rearFt: 40 },
+  'UC:R-15': { ...uc, label: 'R-15', minLotSf: 15000, minWidthFt: 80, frontFt: 30, sideFt: 10, rearFt: 30 },
+  'UC:R-10': { ...uc, label: 'R-10', minLotSf: 10000, minWidthFt: 70, frontFt: 30, sideFt: 10, rearFt: 30 },
+  'UC:R-8': { ...uc, label: 'R-8', minLotSf: 8000, minWidthFt: 60, frontFt: 30, sideFt: 10, rearFt: 30, apt: { density: 8.7, stories: 3 } },
+  'UC:R-6': { ...uc, label: 'R-6', minLotSf: 6000, minWidthFt: 50, frontFt: 25, sideFt: 8, rearFt: 25, apt: { density: 11.6, stories: 3 } },
+  'UC:R-4': { ...uc, label: 'R-4', minLotSf: 4000, minWidthFt: 35, frontFt: 20, sideFt: 5, rearFt: 25, apt: { density: 21.8, stories: 3 } },
+}
+export const UNION_COUNTY_ORDER = ['UC:R-40', 'UC:R-20', 'UC:R-15', 'UC:R-10', 'UC:R-8', 'UC:R-6', 'UC:R-4']
+
+export const TOWN_RULES = { ...CONCORD_RULES, ...MONROE_RULES, ...MATTHEWS_RULES, ...MINT_HILL_RULES, ...HUNTERSVILLE_RULES, ...PINEVILLE_RULES, ...KANNAPOLIS_RULES, ...HARRISBURG_RULES, ...WAXHAW_RULES, ...STALLINGS_RULES, ...CORNELIUS_RULES, ...DAVIDSON_RULES, ...YORK_COUNTY_RULES, ...FORT_MILL_RULES, ...TEGA_CAY_RULES, ...UNION_COUNTY_RULES }
+export const TOWN_ORDERS = { Concord: CONCORD_ORDER, Monroe: MONROE_ORDER, Matthews: MATTHEWS_ORDER, 'Mint Hill': MINT_HILL_ORDER, Huntersville: HUNTERSVILLE_ORDER, Pineville: PINEVILLE_ORDER, Kannapolis: KANNAPOLIS_ORDER, Harrisburg: HARRISBURG_ORDER, Waxhaw: WAXHAW_ORDER, Stallings: STALLINGS_ORDER, Cornelius: CORNELIUS_ORDER, 'York County': YORK_COUNTY_ORDER, 'Fort Mill': FORT_MILL_ORDER, 'Union County': UNION_COUNTY_ORDER }
+export const TOWN_SOURCES = { Concord: CONCORD_SOURCE, Monroe: MONROE_SOURCE, Matthews: MATTHEWS_SOURCE, 'Mint Hill': MINT_HILL_SOURCE, Huntersville: HUNTERSVILLE_SOURCE, Pineville: PINEVILLE_SOURCE, Kannapolis: KANNAPOLIS_SOURCE, Harrisburg: HARRISBURG_SOURCE, Waxhaw: WAXHAW_SOURCE, Stallings: STALLINGS_SOURCE, Cornelius: CORNELIUS_SOURCE, 'York County': YORK_COUNTY_SOURCE, 'Fort Mill': FORT_MILL_SOURCE, 'Union County': UNION_COUNTY_SOURCE }
+export const TOWN_PLANS = { Concord: '2030 Land Use Plan', Monroe: 'Forward Monroe plan', Matthews: 'Envision Matthews land use plan', 'Mint Hill': 'Comprehensive Plan and Future Land Use map', Huntersville: '2040 Community Plan', Pineville: 'Comprehensive Plan and Residential Overlay District', Kannapolis: 'Comprehensive Plan', Harrisburg: 'Land Use Plan', Waxhaw: 'Comprehensive Plan', Stallings: 'Comprehensive Land Use Plan', Cornelius: 'Land Use Plan', 'York County': '2035 Comprehensive Plan', 'Fort Mill': 'Comprehensive Plan', 'Union County': '2050 Comprehensive Plan' }
 // what a district is called on screen (Mint Hill's keys carry a town prefix)
 export const districtLabel = (code) => TOWN_RULES[code]?.label || code

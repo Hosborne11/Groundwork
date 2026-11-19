@@ -426,3 +426,9 @@ export const fortMillApprovalContext = (parcel, key) => unionZonedContext(parcel
   town: 'Fort Mill', layer: FORT_MILL_ZONING, field: 'Zoning', code: key.replace(/^FM:/, ''),
   intense: /^(R-10|R-5|RT-8|GR|PND|MXU|HC|LC|GI|LI)/, oid: 'FID', area: 'Shape__Area', sqftPerUnit: 10.7639,
 })
+
+/* ---------- Union County (unincorporated): county layer 190 ---------- */
+export const unionCountyApprovalContext = (parcel, key) => unionZonedContext(parcel, key, {
+  town: 'Union County', layer: '/gis/union/UNION_COUNTY_LAYERS/MapServer/190', field: 'ZONE', code: key.replace(/^UC:/, ''),
+  intense: /^(R-10|R-8|R-6|R-4|B-|O-|LI|HI|MX|PUD)/,
+})

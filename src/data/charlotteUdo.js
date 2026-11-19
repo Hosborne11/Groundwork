@@ -185,7 +185,7 @@ export const N1_ORDER = ['N1-A', 'N1-B', 'N1-C', 'N1-D', 'N1-E', 'N1-F']
 export const upzoneOptions = (code) => {
   const town = TOWN_RULES[code]?.jurisdiction
   const order = town ? TOWN_ORDERS[town] : IT_ORDER.includes(code) ? IT_ORDER : N1_ORDER
-  const i = order.indexOf(code)
+  const i = order.indexOf({ 'UC:RA-40': 'UC:R-40', 'UC:RA-20': 'UC:R-20' }[code] || code) // agricultural-residential twins
   return i < 0 ? [] : order.slice(i + 1)
 }
 

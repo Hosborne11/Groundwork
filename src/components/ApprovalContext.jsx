@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react'
 import * as turf from '@turf/turf'
 import { approvalContext } from '../lib/charlotte'
 import { itApprovalContext } from '../lib/indianTrail'
-import { concordApprovalContext, monroeApprovalContext, matthewsApprovalContext, mintHillApprovalContext, huntersvilleApprovalContext, pinevilleApprovalContext, kannapolisApprovalContext, harrisburgApprovalContext, waxhawApprovalContext, stallingsApprovalContext, corneliusApprovalContext, yorkCountyApprovalContext, fortMillApprovalContext } from '../lib/towns'
+import { concordApprovalContext, monroeApprovalContext, matthewsApprovalContext, mintHillApprovalContext, huntersvilleApprovalContext, pinevilleApprovalContext, kannapolisApprovalContext, harrisburgApprovalContext, waxhawApprovalContext, stallingsApprovalContext, corneliusApprovalContext, yorkCountyApprovalContext, fortMillApprovalContext, unionCountyApprovalContext } from '../lib/towns'
 import { districtLabel } from '../data/towns'
 
 // each town's own lookup; Charlotte uses its petition history
-const LOOKUP = { 'Indian Trail': itApprovalContext, Concord: concordApprovalContext, Monroe: monroeApprovalContext, Matthews: matthewsApprovalContext, 'Mint Hill': mintHillApprovalContext, Huntersville: huntersvilleApprovalContext, Pineville: pinevilleApprovalContext, Kannapolis: kannapolisApprovalContext, Harrisburg: harrisburgApprovalContext, Waxhaw: waxhawApprovalContext, Stallings: stallingsApprovalContext, Cornelius: corneliusApprovalContext, 'York County': yorkCountyApprovalContext, 'Fort Mill': fortMillApprovalContext }
+const LOOKUP = { 'Indian Trail': itApprovalContext, Concord: concordApprovalContext, Monroe: monroeApprovalContext, Matthews: matthewsApprovalContext, 'Mint Hill': mintHillApprovalContext, Huntersville: huntersvilleApprovalContext, Pineville: pinevilleApprovalContext, Kannapolis: kannapolisApprovalContext, Harrisburg: harrisburgApprovalContext, Waxhaw: waxhawApprovalContext, Stallings: stallingsApprovalContext, Cornelius: corneliusApprovalContext, 'York County': yorkCountyApprovalContext, 'Fort Mill': fortMillApprovalContext, 'Union County': unionCountyApprovalContext }
 import { policyFit, jurisdictionOf } from '../data/charlotteUdo'
 
 const monthYear = (d) => d?.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
