@@ -231,9 +231,24 @@ export const UNION_COUNTY_RULES = {
 }
 export const UNION_COUNTY_ORDER = ['UC:R-40', 'UC:R-20', 'UC:R-15', 'UC:R-10', 'UC:R-8', 'UC:R-6', 'UC:R-4']
 
-export const TOWN_RULES = { ...CONCORD_RULES, ...MONROE_RULES, ...MATTHEWS_RULES, ...MINT_HILL_RULES, ...HUNTERSVILLE_RULES, ...PINEVILLE_RULES, ...KANNAPOLIS_RULES, ...HARRISBURG_RULES, ...WAXHAW_RULES, ...STALLINGS_RULES, ...CORNELIUS_RULES, ...DAVIDSON_RULES, ...YORK_COUNTY_RULES, ...FORT_MILL_RULES, ...TEGA_CAY_RULES, ...UNION_COUNTY_RULES }
-export const TOWN_ORDERS = { Concord: CONCORD_ORDER, Monroe: MONROE_ORDER, Matthews: MATTHEWS_ORDER, 'Mint Hill': MINT_HILL_ORDER, Huntersville: HUNTERSVILLE_ORDER, Pineville: PINEVILLE_ORDER, Kannapolis: KANNAPOLIS_ORDER, Harrisburg: HARRISBURG_ORDER, Waxhaw: WAXHAW_ORDER, Stallings: STALLINGS_ORDER, Cornelius: CORNELIUS_ORDER, 'York County': YORK_COUNTY_ORDER, 'Fort Mill': FORT_MILL_ORDER, 'Union County': UNION_COUNTY_ORDER }
-export const TOWN_SOURCES = { Concord: CONCORD_SOURCE, Monroe: MONROE_SOURCE, Matthews: MATTHEWS_SOURCE, 'Mint Hill': MINT_HILL_SOURCE, Huntersville: HUNTERSVILLE_SOURCE, Pineville: PINEVILLE_SOURCE, Kannapolis: KANNAPOLIS_SOURCE, Harrisburg: HARRISBURG_SOURCE, Waxhaw: WAXHAW_SOURCE, Stallings: STALLINGS_SOURCE, Cornelius: CORNELIUS_SOURCE, 'York County': YORK_COUNTY_SOURCE, 'Fort Mill': FORT_MILL_SOURCE, 'Union County': UNION_COUNTY_SOURCE }
-export const TOWN_PLANS = { Concord: '2030 Land Use Plan', Monroe: 'Forward Monroe plan', Matthews: 'Envision Matthews land use plan', 'Mint Hill': 'Comprehensive Plan and Future Land Use map', Huntersville: '2040 Community Plan', Pineville: 'Comprehensive Plan and Residential Overlay District', Kannapolis: 'Comprehensive Plan', Harrisburg: 'Land Use Plan', Waxhaw: 'Comprehensive Plan', Stallings: 'Comprehensive Land Use Plan', Cornelius: 'Land Use Plan', 'York County': '2035 Comprehensive Plan', 'Fort Mill': 'Comprehensive Plan', 'Union County': '2050 Comprehensive Plan' }
+// Cabarrus County Development Ordinance (Chapter 5, amended Jan 18, 2022), open space subdivision
+// standards for unincorporated land (the one type allowed in every residential district; MDR and HDR
+// allow no other). Each requires 35-40% common open space; LDR-HDR require public water and sewer.
+// Keys carry "CC:".
+export const CABARRUS_COUNTY_SOURCE = 'Cabarrus County Development Ordinance Chapter 5 (open space subdivisions, amended Jan 2022)'
+const cc2 = { jurisdiction: 'Cabarrus County', bonusTo: null, heightFt: 40 }
+export const CABARRUS_COUNTY_RULES = {
+  'CC:AO': { ...cc2, label: 'AO', minLotSf: 43560, minWidthFt: 150, maxDensity: 0.5, frontFt: 50, sideFt: 20, rearFt: 30, densityNote: 'up to 0.5 units per acre with 40% open space; lots at least 1 acre (septic)' },
+  'CC:CR': { ...cc2, label: 'CR', minLotSf: 43560, minWidthFt: 125, maxDensity: 1.0, frontFt: 50, sideFt: 20, rearFt: 30, densityNote: 'up to 1 unit per acre with 40% open space; lots at least 1 acre (septic)' },
+  'CC:LDR': { ...cc2, label: 'LDR', minLotSf: 15000, minWidthFt: 75, maxDensity: 1.5, frontFt: 30, sideFt: 10, rearFt: 30, densityNote: 'up to 1.5 units per acre with 35% open space' },
+  'CC:MDR': { ...cc2, label: 'MDR', minLotSf: 8000, minWidthFt: 60, maxDensity: 2.5, frontFt: 25, sideFt: 5, rearFt: 20, densityNote: 'up to 2.5 units per acre with 35% open space' },
+  'CC:HDR': { ...cc2, label: 'HDR', minLotSf: 4000, minWidthFt: 40, maxDensity: 4.5, frontFt: 15, sideFt: 5, rearFt: 15, densityNote: 'up to 4.5 units per acre with 35% open space' },
+}
+export const CABARRUS_COUNTY_ORDER = ['CC:AO', 'CC:CR', 'CC:LDR', 'CC:MDR', 'CC:HDR']
+
+export const TOWN_RULES = { ...CONCORD_RULES, ...MONROE_RULES, ...MATTHEWS_RULES, ...MINT_HILL_RULES, ...HUNTERSVILLE_RULES, ...PINEVILLE_RULES, ...KANNAPOLIS_RULES, ...HARRISBURG_RULES, ...WAXHAW_RULES, ...STALLINGS_RULES, ...CORNELIUS_RULES, ...DAVIDSON_RULES, ...YORK_COUNTY_RULES, ...FORT_MILL_RULES, ...TEGA_CAY_RULES, ...UNION_COUNTY_RULES, ...CABARRUS_COUNTY_RULES }
+export const TOWN_ORDERS = { Concord: CONCORD_ORDER, Monroe: MONROE_ORDER, Matthews: MATTHEWS_ORDER, 'Mint Hill': MINT_HILL_ORDER, Huntersville: HUNTERSVILLE_ORDER, Pineville: PINEVILLE_ORDER, Kannapolis: KANNAPOLIS_ORDER, Harrisburg: HARRISBURG_ORDER, Waxhaw: WAXHAW_ORDER, Stallings: STALLINGS_ORDER, Cornelius: CORNELIUS_ORDER, 'York County': YORK_COUNTY_ORDER, 'Fort Mill': FORT_MILL_ORDER, 'Union County': UNION_COUNTY_ORDER, 'Cabarrus County': CABARRUS_COUNTY_ORDER }
+export const TOWN_SOURCES = { Concord: CONCORD_SOURCE, Monroe: MONROE_SOURCE, Matthews: MATTHEWS_SOURCE, 'Mint Hill': MINT_HILL_SOURCE, Huntersville: HUNTERSVILLE_SOURCE, Pineville: PINEVILLE_SOURCE, Kannapolis: KANNAPOLIS_SOURCE, Harrisburg: HARRISBURG_SOURCE, Waxhaw: WAXHAW_SOURCE, Stallings: STALLINGS_SOURCE, Cornelius: CORNELIUS_SOURCE, 'York County': YORK_COUNTY_SOURCE, 'Fort Mill': FORT_MILL_SOURCE, 'Union County': UNION_COUNTY_SOURCE, 'Cabarrus County': CABARRUS_COUNTY_SOURCE }
+export const TOWN_PLANS = { Concord: '2030 Land Use Plan', Monroe: 'Forward Monroe plan', Matthews: 'Envision Matthews land use plan', 'Mint Hill': 'Comprehensive Plan and Future Land Use map', Huntersville: '2040 Community Plan', Pineville: 'Comprehensive Plan and Residential Overlay District', Kannapolis: 'Comprehensive Plan', Harrisburg: 'Land Use Plan', Waxhaw: 'Comprehensive Plan', Stallings: 'Comprehensive Land Use Plan', Cornelius: 'Land Use Plan', 'York County': '2035 Comprehensive Plan', 'Fort Mill': 'Comprehensive Plan', 'Union County': '2050 Comprehensive Plan', 'Cabarrus County': 'area land use plans' }
 // what a district is called on screen (Mint Hill's keys carry a town prefix)
 export const districtLabel = (code) => TOWN_RULES[code]?.label || code

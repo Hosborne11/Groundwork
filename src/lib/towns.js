@@ -432,3 +432,35 @@ export const unionCountyApprovalContext = (parcel, key) => unionZonedContext(par
   town: 'Union County', layer: '/gis/union/UNION_COUNTY_LAYERS/MapServer/190', field: 'ZONE', code: key.replace(/^UC:/, ''),
   intense: /^(R-10|R-8|R-6|R-4|B-|O-|LI|HI|MX|PUD)/,
 })
+
+/* ---------- Cabarrus County (unincorporated): county zoning layer ---------- */
+const CABARRUS_COUNTY_ZONING = '/gis/cabarrus/opendata/MapServer/35'
+
+/** Zoning for an unincorporated Cabarrus parcel; "-SU"/"-CU" districts are special/conditional use. */
+export async function cabarrusCountyZoning(parcel) {
+  const r = await getJSON(`${CABARRUS_COUNTY_ZONING}/query`, { ...atParcel(parcel), outFields: 'ZONINGCODE,ZONING_GEN' })
+  const raw = String(r?.features?.[0]?.attributes?.ZONINGCODE || '').trim()
+  if (!raw) return null
+  const base = raw.replace(/-(SU|CU)$/i, '')
+  return { town: 'Cabarrus County', raw, base, conditional: /-(SU|CU)$/i.test(raw), key: `CC:${base}` }
+}
+
+/** Cabarrus County: areas zoned the scenario district (or its special-use form) nearby. */
+export async function cabarrusCountyApprovalContext(parcel, key) {
+  const code = key.replace(/^CC:/, '')
+  const c = turf.pointOnFeature(parcel).geometry.coordinates
+  const [near, roads, zones] = await Promise.allSettled([
+    getJSON(`${CABARRUS_COUNTY_ZONING}/query`, { ...nearPoint(c), where: `ZONINGCODE IN ('${code}','${code}-SU','${code}-CU')`, outFields: 'ZONINGCODE', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0002, f: 'json' }),
+    tigerStreets(parcel, 600),
+    getJSON(`${CABARRUS_COUNTY_ZONING}/query`, { geometry: padded(parcel, 100), geometryType: 'esriGeometryEnvelope', inSR: 4326, spatialRel: 'esriSpatialRelIntersects', outFields: 'ZONINGCODE', returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0001, f: 'json' }),
+  ])
+  const precedents = (ok(near)?.features || []).filter((f) => f.geometry?.rings?.length).map((f) => {
+    const shape = turf.polygon(f.geometry.rings), z = String(f.attributes.ZONINGCODE).trim()
+    return { petition: `Area zoned ${z}`, requested: z, status: /-(SU|CU)$/.test(z) ? 'Special use' : 'On the map', decided: null, year: null,
+      acres: turf.area(shape) / 4046.86, lots: null, from: null, miles: turf.distance(c, turf.pointOnFeature(shape), { units: 'miles' }), shape }
+  }).filter((p) => p.acres >= 1 && !turf.booleanPointInPolygon(turf.point(c), p.shape)).sort((a, b) => a.miles - b.miles)
+  const { frontage, nearestRoad } = frontageFrom(parcel, ok(roads) || [])
+  const neighbors = neighborsFrom(ok(zones)?.features || [], 'ZONINGCODE', parcel)
+  const intense = neighbors.filter((d) => /^(MDR|HDR|OI|LC|GC|LI|GI)/.test(d))
+  return { code: key, town: 'Cabarrus County', mapName: 'Cabarrus County’s zoning map', precedents, cityCounts: {}, pending: [], frontage, nearestRoad, neighbors, intenseNeighbors: intense, mapOnly: true, zonedAreas: true, failed: [near, roads, zones].filter((r) => !ok(r)).length }
+}

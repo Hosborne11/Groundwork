@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { openReportWindow, writeSiteReport } from '../lib/siteReport'
 import { IT_RULES, IT_SOURCE } from '../data/indianTrail'
 import { CONCORD_RULES, MONROE_RULES, TOWN_RULES, TOWN_SOURCES, districtLabel } from '../data/towns'
-import { meckTownZoning, yorkTownZoning } from '../lib/towns'
+import { meckTownZoning, yorkTownZoning, cabarrusCountyZoning } from '../lib/towns'
 import { tigerStreets, frontageFrom } from '../lib/indianTrail'
 import * as turf from '@turf/turf'
 import { nearestSewer, nearestWater, floodShare, soilsFor, zoningAt } from '../lib/gis'
@@ -198,7 +198,9 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
   const meckTown0 = useValue(meckTownZoning, parcel, isMeck && cltZoning === null)
   // York County towns York's layers don't cover (Fort Mill, Tega Cay)
   const yorkTown = useValue(yorkTownZoning, parcel, isYork)
-  const meckTown = meckTown0 || yorkTown // a town's own zoning layer (shown and drafted the same way)
+  // unincorporated Cabarrus (the town layers return nothing)
+  const cabCounty = useValue(cabarrusCountyZoning, parcel, p.county === 'Cabarrus' && cabZoning.status === 'done' && !cabZoning.zones?.length)
+  const meckTown = meckTown0 || yorkTown || cabCounty // a town's or county's own zoning layer (shown and drafted the same way)
   const deed = useValue(deedGroup, parcel)
   const [copied, setCopied] = useState(false)
   const [draftSummary, setDraftSummary] = useState(null) // the open neighborhood draft, for the site report
