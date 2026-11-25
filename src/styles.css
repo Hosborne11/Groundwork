@@ -721,3 +721,25 @@ select, .target select, .housing-pick select, .mix-home, textarea, input[type='t
 .maplibregl-popup-tip { border-top-color: var(--card) !important; border-bottom-color: var(--card) !important; }
 
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* collapsible sections */
+.sec { padding-top: 0 !important; padding-bottom: 0 !important; }
+.sec-h { margin: 0; }
+.sec-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 13px 0; border: 0; background: none; color: var(--ink); cursor: pointer; text-align: left; }
+.sec-title { font-size: 14px; font-weight: 600; letter-spacing: 0.01em; }
+.sec-aside { margin-left: auto; font-size: 12.5px; font-weight: 500; color: var(--ink-3); }
+.sec-chev { flex: none; margin-left: auto; color: var(--ink-3); transition: transform 140ms ease; transform: rotate(-90deg); }
+.sec-aside + .sec-chev { margin-left: 8px; }
+.sec.open .sec-chev { transform: rotate(0deg); }
+.sec-head:hover .sec-title { color: #fff; }
+.sec-body { padding-bottom: 14px; }
+/* layer switches on site condition rows */
+.check-label { display: flex; align-items: center; gap: 6px; }
+.check { position: relative; }
+.check.has-switch { padding-right: 52px; }
+.switch { position: absolute; top: 10px; right: 10px; flex: none; width: 30px; height: 17px; padding: 0; border: 1px solid var(--rule); border-radius: 9px; background: var(--paper); cursor: pointer; }
+.switch i { position: absolute; top: 2px; left: 2px; width: 11px; height: 11px; border-radius: 50%; background: var(--ink-3); transition: transform 140ms ease, background 140ms ease; }
+.switch.on { background: rgba(63, 163, 126, 0.3); border-color: var(--accent); }
+.switch.on i { transform: translateX(13px); background: var(--accent); }
+/* hint pill on the dark theme */
+.hint { background: var(--card); color: var(--ink); border: 1px solid var(--rule); }

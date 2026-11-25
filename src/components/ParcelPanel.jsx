@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { openReportWindow, writeSiteReport } from '../lib/siteReport'
 import { IT_RULES, IT_SOURCE } from '../data/indianTrail'
 import { CONCORD_RULES, MONROE_RULES, TOWN_RULES, TOWN_SOURCES, districtLabel } from '../data/towns'
+import Section from './Section'
 import { meckTownZoning, yorkTownZoning, cabarrusCountyZoning } from '../lib/towns'
 import { tigerStreets, frontageFrom } from '../lib/indianTrail'
 import * as turf from '@turf/turf'
@@ -153,13 +154,17 @@ async function cabarrusZoningCheck(parcel) {
   return { tone: 'none', value: z.map((x) => x.code).join(' / '), detail: z.map((x) => x.town).join(', '), zones: z }
 }
 
-function CheckRow({ label, swatch, state }) {
+function CheckRow({ label, swatch, state, layerOn, onLayer }) {
   if (state.status === 'skip') return null
   return (
-    <div className={`check tone-${state.status === 'done' ? state.tone : state.status}`}>
+    <div className={`check tone-${state.status === 'done' ? state.tone : state.status}${onLayer ? ' has-switch' : ''}`}>
       <div className="check-label">
         {swatch && <span className="swatch" style={{ background: swatch }} aria-hidden="true" />}
         {label}
+        {onLayer && (
+          <button type="button" role="switch" aria-checked={!!layerOn} aria-label={`Show ${label.toLowerCase()} on the map`}
+            className={`switch ${layerOn ? 'on' : ''}`} onClick={onLayer}><i /></button>
+        )}
       </div>
       <div className="check-body">
         {state.status === 'loading' && <span className="pending">Checking…</span>}
@@ -175,7 +180,7 @@ function CheckRow({ label, swatch, state }) {
   )
 }
 
-export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onClose, onPlan, editor, openPlanId, onPlanOpened, inAssembly, onAssemble }) {
+export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onClose, onPlan, editor, openPlanId, onPlanOpened, inAssembly, onAssemble, layers, onLayer }) {
   const p = parcel.properties
   const isMeck = p.county === 'Mecklenburg'
   const isYork = p.county === 'York'
@@ -291,25 +296,22 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
       </div>
 
       {isMeck && !meckTown && (
-        <section className="section">
-          <h3>What you can build</h3>
+        <Section title="What you can build" defaultOpen={true}>
           {place && <p className="place">2040 Policy Map: <strong>{place.name}</strong>{place.area ? ` · ${place.area}` : ''}</p>}
           <BuildSection zoning={cltZoning} acres={p.acres} floodPct={floodPct} />
           {canSketch && <NeighborhoodCard parcel={parcel} code={zoneParts.base} placeType={place?.name} acres={p.acres} floodPolys={floodPolys} floodFailed={flood.status === 'error'} onPlan={onPlan} editor={editor} openPlanId={openPlanId} onPlanOpened={onPlanOpened} onSummary={setDraftSummary} />}
-        </section>
+        </Section>
       )}
 
       {meckTown && !itRule && (
-        <section className="section">
-          <h3>Zoning</h3>
+        <Section title="Zoning" defaultOpen={true}>
           <div className="zone-head"><strong className="zone-code">{meckTown.raw}</strong> <span>Town of {meckTown.town}</span></div>
           <p className="muted-small">{meckTown.conditional ? 'Conditional zoning: what can be built is set by the approved site plan and its conditions, so Groundwork doesn’t draft it.' : TOWN_RULES[meckTown.key]?.noDraft || `Groundwork drafts ${meckTown.town}’s single-family residential districts; this district isn’t one of them.`}{meckTown.petition ? ` Petition ${meckTown.petition}.` : ''}{meckTown.etj ? ' The parcel is outside town limits, in the town’s extraterritorial jurisdiction.' : ''}</p>
-        </section>
+        </Section>
       )}
 
       {itRule && (
-        <section className="section">
-          <h3>What you can build</h3>
+        <Section title="What you can build" defaultOpen={true}>
           <div className="zone-head"><strong className="zone-code">{districtLabel(itCode)}</strong> <span>{town.name} {town.kind}</span></div>
           <dl className="facts">
             <dt>Min lot area</dt><dd>{itRule.noMinLot ? `None (drafts assume ${itRule.minWidthFt} × 85 ft lots)` : `${itRule.minLotSf.toLocaleString()} sq ft`}</dd>
@@ -323,33 +325,30 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
           </dl>
           <p className="muted-small">{town.source}. Cluster and other conditional subdivisions can allow smaller lots in exchange for common open space.</p>
           <NeighborhoodCard parcel={parcel} code={itCode} acres={p.acres} floodPolys={floodPolys} floodFailed={flood.status === 'error'} onPlan={onPlan} editor={editor} openPlanId={openPlanId} onPlanOpened={onPlanOpened} onSummary={setDraftSummary} />
-        </section>
+        </Section>
       )}
 
       {isMeck && cltZoning && (
-        <section className="section">
-          <h3>Rezoning outlook</h3>
+        <Section title="Rezoning outlook" defaultOpen={false}>
           <RezoningSection parcel={parcel} zoning={cltZoning} place={place} fromPetition={fromPetition} />
-        </section>
+        </Section>
       )}
 
-      <section className="section">
-        <h3>Site conditions</h3>
+      <Section title="Site conditions" defaultOpen={true}>
         <CheckRow label="Frontage" state={frontageRow} />
-        <CheckRow label="Flood" state={flood} />
+        <CheckRow label="Flood" state={flood} layerOn={layers?.flood} onLayer={onLayer && (() => onLayer('flood'))} />
         <CheckRow label="Soils" state={soils} />
-        <CheckRow label="Sewer" swatch="#38A169" state={sewer} />
-        <CheckRow label="Water" swatch="#2F7DE1" state={water} />
+        <CheckRow label="Sewer" swatch="#4BB07A" state={sewer} layerOn={layers?.sewer} onLayer={onLayer && (() => onLayer('sewer'))} />
+        <CheckRow label="Water" swatch="#5AA7E6" state={water} layerOn={layers?.water} onLayer={onLayer && (() => onLayer('water'))} />
         <CheckRow label="Zoning" state={cabZoning} />
         <CheckRow label="Zoning" state={yZoning} />
         <CheckRow label="Zoning" state={uZoning} />
         <CheckRow label="Utilities" swatch="#2F7DE1" state={yUtility} />
         <CheckRow label="2035 plan" state={yLandUse} />
         {isMeck && <p className="note">Charlotte Water doesn't publish its pipe network. These distances come from the mains it described in nearby rezoning reviews, so they confirm a main exists but may not show the closest one.</p>}
-      </section>
+      </Section>
 
-      <section className="section">
-        <h3>Ownership and value</h3>
+      <Section title="Ownership and value" defaultOpen={false}>
         <dl className="facts">
           <dt>Mailing address</dt><dd>{p.mail || '—'}</dd>
           <dt>{isMeck || isUnion ? 'Market value' : isYork ? 'Appraised value' : 'Assessed value'}</dt><dd>{money(p.assessed)}</dd>
@@ -368,7 +367,7 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
           <dt>{isYork || isUnion ? 'Subdivision' : 'Neighborhood'}</dt><dd>{p.neighborhood || '—'}</dd>
           {p.yearBuilt && <><dt>Year built</dt><dd>{p.yearBuilt}</dd></>}
         </dl>
-      </section>
+      </Section>
 
       <p className="sources">
         {isMeck ? 'Mecklenburg County / City of Charlotte GIS, Charlotte UDO, Charlotte Water rezoning comments, FEMA NFHL, USDA NRCS.'

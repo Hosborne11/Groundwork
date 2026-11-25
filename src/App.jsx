@@ -154,8 +154,8 @@ export default function App() {
         layers: [
           { id: 'base', type: 'raster', source: 'base' },
           { id: 'labels', type: 'raster', source: 'labels', paint: { 'raster-opacity': 0.85 } },
-          { id: 'county-casing', type: 'line', source: 'counties', paint: { 'line-color': '#1C2A33', 'line-width': 3, 'line-opacity': 0.35 } },
-          { id: 'county-line', type: 'line', source: 'counties', paint: { 'line-color': '#FFFFFF', 'line-width': 1.4, 'line-opacity': 0.75, 'line-dasharray': [3, 2] } },
+          { id: 'county-casing', type: 'line', source: 'counties', paint: { 'line-color': '#14191E', 'line-width': 3, 'line-opacity': 0.3 } },
+          { id: 'county-line', type: 'line', source: 'counties', paint: { 'line-color': '#FFFFFF', 'line-width': 1, 'line-opacity': 0.4, 'line-dasharray': [3, 2] } },
           { id: 'county-selected', type: 'line', source: 'counties', filter: ['==', ['get', 'GEOID'], ''], paint: { 'line-color': '#FFFFFF', 'line-width': ['interpolate', ['linear'], ['zoom'], 8, 2.5, 12, 4] } },
           { id: 'flood', type: 'raster', source: 'flood', layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.6 } },
           // opportunity hexagons: hotter = higher score; low scores fade so hot spots stand out
@@ -577,7 +577,8 @@ export default function App() {
           openPlanId={pendingPlan && pendingPlan.parcelId === siteId(assembly) ? pendingPlan.id : null} onPlanOpened={() => setPendingPlan(null)}
         />
       ) : selected && (
-        <ParcelPanel key={selected.properties.id} parcel={selected} fromPetition={fromPetition} isSaved={isSaved} onSave={toggleSave} onClose={() => { editor.register(null); closePanel() }} onPlan={drawPlan} editor={editor}
+        <ParcelPanel key={selected.properties.id} parcel={selected} fromPetition={fromPetition} isSaved={isSaved} onSave={toggleSave}
+          layers={layers} onLayer={(k) => setLayers((l) => ({ ...l, [k]: !l[k] }))} onClose={() => { editor.register(null); closePanel() }} onPlan={drawPlan} editor={editor}
           openPlanId={pendingPlan && pendingPlan.parcelId === selected.properties.id ? pendingPlan.id : null} onPlanOpened={() => setPendingPlan(null)}
           inAssembly={assembly.some((p) => p.properties.id === selected.properties.id)} onAssemble={() => toggleAssembly(selected)} />
       )}
