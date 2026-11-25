@@ -14,6 +14,7 @@ import { loadOpportunity, scoreHexes, DEFAULT_WEIGHTS, DEFAULT_EARLY_WEIGHTS, SC
 import CountyPicker from './components/CountyPicker'
 import AssemblyPanel, { combineParcels, siteId } from './components/AssemblyPanel'
 import { loadCounties, countyAt } from './lib/counties'
+import { terrainTiles } from './lib/terrain'
 
 const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services'
 const BASEMAPS = {
@@ -35,7 +36,7 @@ export default function App() {
   const [loadingParcel, setLoadingParcel] = useState(false)
   const [error, setError] = useState(null)
   const [basemap, setBasemap] = useState('imagery')
-  const [layers, setLayers] = useState({ parcels: true, opportunity: false, schools: false, rezonings: true, sewer: true, water: true, flood: false })
+  const [layers, setLayers] = useState({ parcels: true, opportunity: false, schools: false, rezonings: true, sewer: true, water: true, flood: false, terrain: false })
   const [zoom, setZoom] = useState(11)
   const [saved, setSaved] = useState(loadSaved)
   const [menu, setMenu] = useState(null)
@@ -134,6 +135,8 @@ export default function App() {
           labels: { type: 'raster', tiles: [`${ESRI}/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}`], tileSize: 256 },
           parcels: { type: 'geojson', data: turf.featureCollection([]), attribution: 'Cabarrus County GIS' },
           flood: { type: 'raster', tiles: [floodTiles()], tileSize: 512, attribution: 'FEMA NFHL' },
+          terrainSlope: { type: 'raster', tiles: [terrainTiles('Hillshade Multidirectional')], tileSize: 512, minzoom: 12, attribution: 'USGS 3DEP' },
+          terrainContours: { type: 'raster', tiles: [terrainTiles('Preset 5ft Contour Interval')], tileSize: 512, minzoom: 14 },
           sewer: { type: 'geojson', data: turf.featureCollection([]), attribution: 'City of Concord' },
           water: { type: 'geojson', data: turf.featureCollection([]) },
           selected: { type: 'geojson', data: turf.featureCollection([]) },
@@ -158,6 +161,8 @@ export default function App() {
           { id: 'county-line', type: 'line', source: 'counties', paint: { 'line-color': '#FFFFFF', 'line-width': 1, 'line-opacity': 0.4, 'line-dasharray': [3, 2] } },
           { id: 'county-selected', type: 'line', source: 'counties', filter: ['==', ['get', 'GEOID'], ''], paint: { 'line-color': '#FFFFFF', 'line-width': ['interpolate', ['linear'], ['zoom'], 8, 2.5, 12, 4] } },
           { id: 'flood', type: 'raster', source: 'flood', layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.6 } },
+          { id: 'terrainSlope', type: 'raster', source: 'terrainSlope', layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.4 } },
+          { id: 'terrainContours', type: 'raster', source: 'terrainContours', layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.9 } },
           // opportunity hexagons: hotter = higher score; low scores fade so hot spots stand out
           { id: 'opp-fill', type: 'fill', source: 'opportunity', layout: { visibility: 'none' }, paint: {
             'fill-color': ['interpolate', ['linear'], ['get', 'score'], ...SCORE_COLORS.flat()],
@@ -307,6 +312,7 @@ export default function App() {
       for (const id of ['parcels', 'sewer', 'water', 'flood']) {
         m.setLayoutProperty(id, 'visibility', layers[id] ? 'visible' : 'none')
       }
+      for (const id of ['terrainSlope', 'terrainContours']) m.setLayoutProperty(id, 'visibility', layers.terrain ? 'visible' : 'none')
       m.setLayoutProperty('cltSewer', 'visibility', layers.sewer ? 'visible' : 'none')
       m.setLayoutProperty('cltWater', 'visibility', layers.water ? 'visible' : 'none')
       for (const id of ['rezonings-fill', 'rezonings-line']) {

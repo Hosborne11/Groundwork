@@ -743,3 +743,7 @@ select, .target select, .housing-pick select, .mix-home, textarea, input[type='t
 .switch.on i { transform: translateX(13px); background: var(--accent); }
 /* hint pill on the dark theme */
 .hint { background: var(--card); color: var(--ink); border: 1px solid var(--rule); }
+
+/* links on the dark theme */
+a { color: var(--water); }
+a:hover { color: #8cc3f0; }

@@ -3,6 +3,7 @@ import { openReportWindow, writeSiteReport } from '../lib/siteReport'
 import { IT_RULES, IT_SOURCE } from '../data/indianTrail'
 import { CONCORD_RULES, MONROE_RULES, TOWN_RULES, TOWN_SOURCES, districtLabel } from '../data/towns'
 import Section from './Section'
+import { terrainFor } from '../lib/terrain'
 import { meckTownZoning, yorkTownZoning, cabarrusCountyZoning } from '../lib/towns'
 import { tigerStreets, frontageFrom } from '../lib/indianTrail'
 import * as turf from '@turf/turf'
@@ -129,6 +130,16 @@ async function frontageCheck(parcel) {
   return { tone: 'watch', value: 'No road found nearby', detail: 'No road within about 600 ft in Census road data; check access.' }
 }
 
+async function terrainCheck(parcel) {
+  const t = await terrainFor(parcel)
+  const steep = t.steepShare != null ? Math.round(t.steepShare * 100) : null
+  return {
+    tone: steep == null ? 'none' : steep >= 30 ? 'flag' : steep >= 10 ? 'watch' : 'good',
+    value: `${Math.round(t.reliefFt)} ft of relief · ${Math.round(t.slopePct)}% typical slope`,
+    detail: [`Elevation ${Math.round(t.minFt)}–${Math.round(t.maxFt)} ft`, steep != null && `${steep}% of the parcel is steeper than 15%`, 'USGS 3DEP elevation'].filter(Boolean).join(' · '),
+  }
+}
+
 async function floodCheck(parcel) {
   const r = await floodShare(parcel)
   if (r.pct < 0.5) return { pct: 0, polys: [], tone: 'good', value: 'Outside 100-yr floodplain', detail: 'No FEMA special flood hazard area on the parcel' }
@@ -188,6 +199,7 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
 
   const flood = useCheck(floodCheck, parcel)
   const frontageRow = useCheck(frontageCheck, parcel)
+  const terrain = useCheck(terrainCheck, parcel)
   const soils = useCheck(soilsCheck, parcel)
   // pipe distances only where pipes are published (Charlotte Water records, Concord mains)
   const sewer = useCheck(isMeck ? cltSewerCheck : sewerCheck, parcel, !isYork && !isUnion)
@@ -250,7 +262,7 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
       p.address && `Address: ${p.address}`,
       isMeck && cltZoning && `Zoning: ${cltZoning.code}`,
       isMeck && place && `2040 place type: ${place.name}`,
-      line('Frontage', frontageRow), line('Flood', flood), line('Soils', soils), line('Sewer', sewer), line('Water', water), !isMeck && line('Zoning', cabZoning),
+      line('Frontage', frontageRow), line('Terrain', terrain), line('Flood', flood), line('Soils', soils), line('Sewer', sewer), line('Water', water), !isMeck && line('Zoning', cabZoning),
       `Assessed: ${money(p.assessed)} · Last sale: ${sale}${deed ? ` (deed covers ${deed.count} parcels)` : ''}`,
       `Owner mailing: ${p.mail}`,
     ].filter(Boolean).join('\n')
@@ -269,7 +281,7 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
       address: p.address, owner: p.owner, mail: p.mail, county: p.county, id: p.id, acres: p.acres, vacant: p.vacant, landUse: p.landUse,
       assessed: money(p.assessed), sale: `${sale}${deed ? ` (deed covers ${deed.count} parcels)` : ''}`,
       zoning: isMeck ? cltZoning?.code : zoningCheck?.value, place: isMeck && place ? `${place.name}${place.area ? ` · ${place.area}` : ''}` : null,
-      checks: [item('Road frontage', frontageRow), item('Floodplain', flood), item('Soils', soils), item('Sewer', sewer), item('Water', water), item('Utilities', yUtility), item('Land use plan', yLandUse)].filter(Boolean),
+      checks: [item('Road frontage', frontageRow), item('Terrain', terrain), item('Floodplain', flood), item('Soils', soils), item('Sewer', sewer), item('Water', water), item('Utilities', yUtility), item('Land use plan', yLandUse)].filter(Boolean),
       summary: isMeck || itCode ? draftSummary : null,
       snapshot,
     })
@@ -336,6 +348,7 @@ export default function ParcelPanel({ parcel, fromPetition, isSaved, onSave, onC
 
       <Section title="Site conditions" defaultOpen={true}>
         <CheckRow label="Frontage" state={frontageRow} />
+        <CheckRow label="Terrain" state={terrain} layerOn={layers?.terrain} onLayer={onLayer && (() => onLayer('terrain'))} />
         <CheckRow label="Flood" state={flood} layerOn={layers?.flood} onLayer={onLayer && (() => onLayer('flood'))} />
         <CheckRow label="Soils" state={soils} />
         <CheckRow label="Sewer" swatch="#4BB07A" state={sewer} layerOn={layers?.sewer} onLayer={onLayer && (() => onLayer('sewer'))} />
