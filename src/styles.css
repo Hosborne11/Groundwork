@@ -747,3 +747,35 @@ select, .target select, .housing-pick select, .mix-home, textarea, input[type='t
 /* links on the dark theme */
 a { color: var(--water); }
 a:hover { color: #8cc3f0; }
+
+/* ---------- draft card: headline, mix, calculations (plat theme) ---------- */
+.siteplan { background: var(--paper); border: 1px solid var(--rule); border-radius: 8px; }
+.nb-total { align-items: baseline; gap: 8px; }
+.nb-lots { font-family: var(--font-num); font-size: 44px; font-weight: 700; line-height: 1; letter-spacing: -0.01em; color: #fff; }
+.nb-unit { font-size: 15px; font-weight: 500; color: var(--ink-2); }
+.nb-total .pass { margin-left: auto; align-self: center; font-size: 11px; letter-spacing: 0.06em; }
+.nb-density { font-size: 13px; color: var(--ink-2); }
+.scenario-compare .up { color: #7fd3a5; } .scenario-compare .down { color: #f2a59e; }
+.mix-bar { display: flex; gap: 3px; height: 8px; margin: 12px 0 8px; background: none; border-radius: 0; overflow: visible; }
+.mix-bar span { border-radius: 2px; min-width: 4px; }
+.mix-list { margin: 0 0 12px; padding: 0; list-style: none; font-size: 13px; }
+.mix-list li { display: grid; grid-template-columns: 14px 1fr auto 64px; align-items: center; gap: 8px; padding: 3px 0; color: var(--ink-2); }
+.mix-list li .dot { width: 9px; height: 9px; border-radius: 2px; }
+.mix-list li span { font-variant-numeric: tabular-nums; color: var(--ink-3); }
+.mix-list li strong { text-align: right; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.calc { margin: 4px 0 12px; }
+.calc h4 { margin: 0 0 6px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
+.calc dl { margin: 0; }
+.calc dl > div { display: grid; grid-template-columns: 1fr 56px 84px; gap: 8px; padding: 6px 0; border-top: 1px solid var(--rule); font-size: 13px; }
+.calc dt { color: var(--ink-2); }
+.calc dd { margin: 0; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink); }
+.calc dd.pct { font-weight: 500; color: var(--ink-3); }
+.checks-box { margin: 0 0 12px; border: 1px solid var(--rule); border-radius: 6px; background: var(--card); }
+.checks-box > summary { display: flex; align-items: center; gap: 8px; padding: 9px 12px; cursor: pointer; list-style: none; font-size: 13.5px; font-weight: 600; }
+.checks-box > summary::-webkit-details-marker { display: none; }
+.checks-box > summary::after { content: ''; width: 7px; height: 7px; margin-left: 6px; border-right: 1.6px solid var(--ink-3); border-bottom: 1.6px solid var(--ink-3); transform: rotate(-45deg); transition: transform 140ms ease; }
+.checks-box[open] > summary::after { transform: rotate(45deg); }
+.checks-box > summary em { margin-left: auto; font-style: normal; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 9px; }
+.checks-box > summary em.ok { background: rgba(75, 176, 122, 0.16); color: #7fd3a5; }
+.checks-box > summary em.bad { background: rgba(224, 106, 95, 0.16); color: #f2a59e; }
+.checks-box .udo-checks { margin: 0; padding: 4px 12px 10px; border-top: 1px solid var(--rule); }

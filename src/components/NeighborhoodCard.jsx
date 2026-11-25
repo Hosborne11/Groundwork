@@ -772,6 +772,8 @@ export default function NeighborhoodCard({ parcel, parts, code: zonedCode, place
             ))}
           </ul>
 
+          <details className="checks-box" open={!passAll}>
+          <summary><span>Code checks</span><em className={passAll ? 'ok' : 'bad'}>{checks.filter((c) => c.ok === true).length} of {checks.length} met</em></summary>
           <ul className="udo-checks" aria-label={`UDO checks for ${plan.district}`}>
             {checks.map((c) => (
               <li key={c.label} className={c.ok === true ? 'ok' : c.ok === 'limited' ? 'limited' : 'bad'}>
@@ -781,18 +783,27 @@ export default function NeighborhoodCard({ parcel, parts, code: zonedCode, place
             ))}
             <li className="unchecked"><span className="mark" aria-hidden="true">–</span><div><strong>Not checked</strong><span>Tree save and open space requirements, street design standards, stormwater, building coverage and height (no buildings are drawn), and parking.</span></div></li>
           </ul>
+          </details>
 
-          <div className="nb-grid">
-            {[
-              ['Total area', `${fmt(plan.totalAc, 2)} ac`],
-              ['Net buildable', `${fmt(plan.netBuildableAc, 2)} ac`],
-              [plan.product === 'apartments' ? 'Drives & parking' : 'Roads', plan.product === 'apartments' ? `${fmt(plan.roadAc, 1)} ac · ${fmt(plan.spaces)} spaces` : `${fmt(plan.roadLenFt)} ft · ${fmt(plan.roadAc, 1)} ac`],
-              ['Open space', `${fmt(plan.openPct, 1)}%`],
-              [`Pond${edit?.ponds?.length > 1 ? 's' : ''}`, `${fmt(plan.pondAc, 2)} ac`],
-              ['Green space', `${fmt(plan.greenAc, 2)} ac`],
-              ...(plan.parkAc > 0 ? [['Parks', `${fmt(plan.parkAc, 2)} ac`]] : []),
-              ...(plan.unbuildableAc > 0.01 ? [['Floodplain', `${fmt(plan.unbuildableAc, 2)} ac`]] : []),
-            ].map(([k, v]) => <div key={k}><span>{k}</span><strong>{v}</strong></div>)}
+          <div className="calc">
+            <h4>Calculations</h4>
+            <dl>
+              {[
+                ['Total area', plan.totalAc],
+                ['Net buildable', plan.netBuildableAc],
+                [plan.product === 'apartments' ? 'Drives & parking' : 'Road area', plan.roadAc],
+                [`Pond${edit?.ponds?.length > 1 ? 's' : ''}`, plan.pondAc],
+                ['Green space', plan.greenAc],
+                ...(plan.parkAc > 0 ? [['Parks', plan.parkAc]] : []),
+                ...(plan.unbuildableAc > 0.01 ? [['Floodplain', plan.unbuildableAc]] : []),
+              ].map(([k, ac]) => (
+                <div key={k}><dt>{k}</dt><dd className="pct">{plan.totalAc ? `${fmt((ac / plan.totalAc) * 100, 1)}%` : ''}</dd><dd>{fmt(ac, 2)} ac</dd></div>
+              ))}
+              <div><dt>Open space</dt><dd className="pct" /><dd>{fmt(plan.openPct, 1)}%</dd></div>
+              {plan.product === 'apartments'
+                ? <div><dt>Parking</dt><dd className="pct" /><dd>{fmt(plan.spaces)} spaces</dd></div>
+                : <div><dt>Road length</dt><dd className="pct" /><dd>{fmt(plan.roadLenFt)} ft</dd></div>}
+            </dl>
           </div>
 
           <div className="nb-legend" aria-label="Map key">
