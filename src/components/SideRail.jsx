@@ -10,6 +10,7 @@ import { SOURCE_NOTES } from '../lib/rezonings'
 // Simple stroke icons, drawn to match the type weight in the rail.
 const ICONS = {
   basemaps: <><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z" /></>,
+  explore: <><rect x="3.5" y="3.5" width="7" height="7" rx="1.2" /><rect x="13.5" y="3.5" width="7" height="7" rx="1.2" /><rect x="3.5" y="13.5" width="7" height="7" rx="1.2" /><circle cx="17" cy="17" r="3.2" /><path d="m19.4 19.4 1.8 1.8" /></>,
   layers: <><path d="M12 3 2.5 8 12 13l9.5-5L12 3z" /><path d="m2.5 12.5 9.5 5 9.5-5" /><path d="m2.5 16.5 9.5 5 9.5-5" /></>,
   saved: <path d="M6 3.5h12v17l-6-4.2-6 4.2v-17z" />,
   rezonings: <><path d="M5 21V4" /><path d="M5 4h11l-2 3.5L16 11H5" /></>,
@@ -27,6 +28,7 @@ const Icon = ({ name }) => (
 const ITEMS = [
   { id: 'basemaps', label: 'Base Maps' },
   { id: 'layers', label: 'Layers' },
+  { id: 'explore', label: 'Explore' },
   { id: 'saved', label: 'Saved' },
   { id: 'rezonings', label: 'Rezonings' },
   { id: 'key', label: 'Zoning Key' },
@@ -68,7 +70,7 @@ export default function SideRail({
         </button>
       </nav>
 
-      {open && (
+      {open && open !== 'explore' && (
         <section id="flyout" className="flyout" aria-label={open}>
           <div className="flyout-head">
             <h2>{ITEMS.find((i) => i.id === open)?.label || 'Account'}</h2>

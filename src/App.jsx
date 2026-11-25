@@ -15,6 +15,9 @@ import CountyPicker from './components/CountyPicker'
 import AssemblyPanel, { combineParcels, siteId } from './components/AssemblyPanel'
 import { loadCounties, countyAt } from './lib/counties'
 import { terrainTiles } from './lib/terrain'
+import ExploreLayers from './components/ExploreLayers'
+import { useCatalogLayers } from './lib/catalogLayers'
+import { CATALOG } from './data/layerCatalog'
 
 const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services'
 const BASEMAPS = {
@@ -40,6 +43,9 @@ export default function App() {
   const [zoom, setZoom] = useState(11)
   const [saved, setSaved] = useState(loadSaved)
   const [menu, setMenu] = useState(null)
+  const [mapReady, setMapReady] = useState(false)
+  const [catalogOn, setCatalogOn] = useState([]) // Explore-catalog vector layers on the map
+  const [catalogWaiting, setCatalogWaiting] = useState([])
   const menuRef = useRef(null)
   menuRef.current = menu
   // opportunity map
@@ -262,6 +268,7 @@ export default function App() {
     }
     m.on('moveend', detectCounty)
     m.on('load', () => {
+      setMapReady(true)
       loadCounties().then((fc) => { countiesRef.current = fc; m.getSource('counties')?.setData(fc); detectCounty() }).catch(() => {})
       loadRezonings().then((r) => { m.getSource('rezonings')?.setData(r.all); setRezonings(r) }).catch(() => {})
       charlotteWaterLines().then(({ water, sewer }) => {
@@ -490,6 +497,16 @@ export default function App() {
     map.current?.getSource('selected')?.setData(turf.featureCollection([]))
   }
 
+  // Explore catalog: built-in layers use `layers`; the rest are drawn by the catalog loader
+  useCatalogLayers(map, mapReady, catalogOn, setCatalogWaiting)
+  const catalogIsOn = (id) => { const l = CATALOG.find((x) => x.id === id); return l?.kind === 'builtin' ? !!layers[l.key] : catalogOn.includes(id) }
+  const catalogSet = (id, on) => {
+    const l = CATALOG.find((x) => x.id === id)
+    if (!l) return
+    if (l.kind === 'builtin') setLayers((cur) => ({ ...cur, [l.key]: on }))
+    else setCatalogOn((cur) => (on ? [...new Set([...cur, id])] : cur.filter((x) => x !== id)))
+  }
+
   return (
     <div className={`app ${menu ? 'menu-open' : ''}`}>
       <div ref={mapEl} className="map" />
@@ -501,6 +518,8 @@ export default function App() {
         <CountyPicker current={county} onPick={flyToCounty} />
         <Search onPick={flyToParcel} />
       </header>
+
+      {menu === 'explore' && <ExploreLayers isOn={catalogIsOn} setOn={catalogSet} onClose={() => setMenu(null)} waiting={catalogWaiting} />}
 
       <SideRail
         open={menu}
