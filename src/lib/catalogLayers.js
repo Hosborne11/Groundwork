@@ -31,7 +31,8 @@ async function fetchView(layer, b, zoom) {
 export function useCatalogLayers(mapRef, ready, active, onStatus) {
   const timer = useRef(null)
   const ids = active.filter((id) => BY_ID[id]?.kind === 'vector')
-  const key = ids.join('|')
+  const rasters = active.filter((id) => BY_ID[id]?.kind === 'raster')
+  const key = [...ids, ...rasters].join('|')
 
   useEffect(() => {
     const m = mapRef.current
@@ -57,6 +58,15 @@ export function useCatalogLayers(mapRef, ready, active, onStatus) {
         m.removeSource(src)
       }
     }
+    // image layers: tiles come straight from the service
+    for (const l of CATALOG.filter((x) => x.kind === 'raster')) {
+      const src = `cat-${l.id}`, on = rasters.includes(l.id)
+      if (on && !m.getSource(src)) {
+        m.addSource(src, { type: 'raster', tiles: [l.tiles], tileSize: 512, minzoom: l.minzoom, attribution: l.source })
+        m.addLayer({ id: `${src}-raster`, type: 'raster', source: src, paint: { 'raster-opacity': l.opacity ?? 0.8 } }, before)
+      }
+      if (!on && m.getSource(src)) { m.removeLayer(`${src}-raster`); m.removeSource(src) }
+    }
     // load features for the view; refresh after the map settles
     const load = async () => {
       const b = m.getBounds(), z = m.getZoom()
@@ -68,6 +78,7 @@ export function useCatalogLayers(mapRef, ready, active, onStatus) {
         if (z < l.minzoom) { src.setData({ type: 'FeatureCollection', features: [] }); waiting.push(l); return }
         try { src.setData({ type: 'FeatureCollection', features: await fetchView(l, b, z) }) } catch { /* keep the last view */ }
       }))
+      for (const id of rasters) if (z < BY_ID[id].minzoom) waiting.push(BY_ID[id])
       onStatus?.(waiting.map((l) => l.name))
     }
     const onMove = () => { clearTimeout(timer.current); timer.current = setTimeout(load, 350) }

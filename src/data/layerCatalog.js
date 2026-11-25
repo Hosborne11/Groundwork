@@ -33,6 +33,17 @@ export const CATALOG = [
   { id: 'opportunity', key: 'opportunity', kind: 'builtin', category: 'growth', name: 'Development opportunity', locations: LOCATIONS, source: 'Groundwork analysis', desc: 'Hexagons scored from rezonings, land sales, price trends, vacant land, new homes, and utilities.' },
   { id: 'schools', key: 'schools', kind: 'builtin', category: 'community', name: 'Schools', locations: LOCATIONS, source: 'NC DPI, SC Dept. of Education', desc: 'Public, charter, and York private schools by level.' },
 
+  // federal environmental image layers (kind 'raster': map tiles drawn by the service)
+  { id: 'env-wetlands', kind: 'raster', category: 'environment', name: 'Wetlands', minzoom: 12, opacity: 0.75, locations: LOCATIONS, source: 'USFWS National Wetlands Inventory',
+    desc: 'Mapped wetlands by type (forested, emergent, ponds, riverine). Jurisdictional limits need a field delineation.',
+    tiles: 'https://fwspublicservices.wim.usgs.gov/wetlandsmapservice/rest/services/Wetlands/MapServer/export?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=512,512&format=png32&transparent=true&f=image' },
+  { id: 'env-streams', kind: 'raster', category: 'environment', name: 'Streams and water bodies', minzoom: 11, opacity: 0.9, locations: LOCATIONS, source: 'USGS National Hydrography Dataset',
+    desc: 'Streams, rivers, ponds, and lakes, useful for spotting stream buffers before drafting.',
+    tiles: 'https://hydro.nationalmap.gov/arcgis/rest/services/nhd/MapServer/export?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=512,512&format=png32&transparent=true&f=image' },
+  { id: 'env-soils', kind: 'raster', category: 'environment', name: 'Soil map units', minzoom: 14, opacity: 0.6, locations: LOCATIONS, source: 'USDA NRCS Soil Survey',
+    desc: 'Soil survey map units with their symbols; the parcel panel describes the soils on a selected parcel.',
+    tiles: 'https://SDMDataAccess.sc.egov.usda.gov/Spatial/SDM.wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=mapunitpoly&STYLES=&SRS=EPSG:3857&BBOX={bbox-epsg-3857}&WIDTH=512&HEIGHT=512&FORMAT=image/png&TRANSPARENT=true' },
+
   // land use and boundaries
   { id: 'lu-clt-2040', kind: 'vector', style: 'zoning', category: 'zoning', name: 'Charlotte 2040 Policy Map', url: '/gis/agolclt/Charlotte_Future_2040_Policy_Map/FeatureServer/0', field: 'PlaceTypeCde', minzoom: 12,
     locations: ['Mecklenburg', 'Charlotte'], source: 'City of Charlotte', desc: 'Adopted place types (Neighborhood 1, Neighborhood 2, activity centers, and more) that guide rezonings.' },
@@ -64,7 +75,7 @@ export const CATALOG = [
 ]
 
 export const COLLECTIONS = [
-  { id: 'diligence', name: 'Site due diligence', blurb: 'Floodplain, terrain, utilities, and parcel lines', layers: ['flood', 'terrain', 'sewer', 'water', 'parcels'], swatches: ['#2D6E8E', '#8E969E', '#4BB07A', '#5AA7E6'] },
+  { id: 'diligence', name: 'Site due diligence', blurb: 'Floodplain, wetlands, streams, soils, terrain, and utilities', layers: ['flood', 'env-wetlands', 'env-streams', 'env-soils', 'terrain', 'sewer', 'water', 'parcels'], swatches: ['#2D6E8E', '#4E9C74', '#8E969E', '#4BB07A'] },
   { id: 'rezoning', name: 'Rezoning watch', blurb: 'Rezonings, Charlotte zoning, and the 2040 Policy Map', layers: ['rezonings', 'z-charlotte', 'lu-clt-2040'], swatches: ['#F2A81D', '#A78BFA', '#D9B44A', '#4FAE9B'] },
   { id: 'utilities', name: 'Utilities', blurb: 'Sewer and water mains', layers: ['sewer', 'water'], swatches: ['#4BB07A', '#5AA7E6'] },
   { id: 'growth', name: 'Growth signals', blurb: 'Opportunity, rezonings, and schools', layers: ['opportunity', 'rezonings', 'schools'], swatches: ['#3FA37E', '#F2A81D', '#86ADD9'] },
