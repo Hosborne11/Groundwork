@@ -65,6 +65,12 @@ export function writeSiteReport(w, d) {
         <div class="total"><span class="big">${approx}${num(s.count)}</span> ${esc(s.unitWord)} <span class="pass ${s.pass ? 'yes' : 'no'}">${s.pass ? 'PASS' : 'CHECK'}</span></div>
         ${compare}
         <p class="lines">${lines.join(' · ')}</p>
+        ${f.totalAc ? `<h3>Calculations</h3><table class="calc"><tbody>${[
+          ['Total area', f.totalAc], ['Road area', f.roadAc], ['Pond', f.pondAc], ['Green space', f.greenAc],
+        ].filter(([, ac]) => ac != null).map(([k, ac]) => `<tr><th>${k}</th><td class="pct">${num((ac / f.totalAc) * 100, 1)}%</td><td class="v">${num(ac, 2)} ac</td></tr>`).join('')}
+          <tr><th>Open space</th><td class="pct"></td><td class="v">${num(f.openPct, 1)}%</td></tr>
+          ${f.roadLenFt ? `<tr><th>Road length</th><td class="pct"></td><td class="v">${num(f.roadLenFt)} ft</td></tr>` : ''}
+        </tbody></table>` : ''}
         <h3>UDO checks for ${esc(s.district)}</h3>
         <ul class="checks">${checks}</ul>
         ${approval}
@@ -72,41 +78,45 @@ export function writeSiteReport(w, d) {
   }
 
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>Site report: ${esc(d.address || d.id)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
   @page { size: letter; margin: 0.45in; }
   * { box-sizing: border-box; }
-  body { margin: 0; font: 12px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; color: #1C2A33; background: #fff; }
+  body { margin: 0; font: 12px/1.45 'Barlow', 'Helvetica Neue', Arial, sans-serif; color: #1b232a; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .page { max-width: 7.6in; margin: 0 auto; padding: 24px 0 40px; }
-  .bar { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 3px solid #D6157A; padding-bottom: 6px; margin-bottom: 12px; }
-  .bar .brand { font-weight: 800; letter-spacing: .02em; }
-  .bar .date { color: #667; font-size: 11px; }
-  h1 { font-size: 22px; margin: 0; }
-  .sub { color: #556; margin: 2px 0 10px; }
-  .acres { float: right; text-align: right; }
-  .acres .n { font-size: 30px; font-weight: 800; line-height: 1; }
-  .map { width: 100%; height: 3.1in; object-fit: cover; border: 1px solid #ccd; border-radius: 4px; display: block; margin: 8px 0 12px; }
-  .nomap { height: 0.6in; display: grid; place-items: center; color: #889; border: 1px dashed #ccd; border-radius: 4px; margin: 8px 0 12px; }
-  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  h2 { font-size: 15px; margin: 14px 0 6px; }
-  h3 { font-size: 13px; margin: 12px 0 4px; }
-  .muted { color: #778; font-weight: 400; font-size: 11px; }
+  .bar { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid #1b232a; padding-bottom: 6px; margin-bottom: 14px; }
+  .bar .brand { font-weight: 700; letter-spacing: .08em; text-transform: uppercase; font-size: 10.5px; }
+  .bar .brand::before { content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; background: #e8b04a; vertical-align: 1px; }
+  .bar .date { color: #6b7782; font-size: 11px; }
+  h1 { font-size: 22px; font-weight: 600; margin: 0; letter-spacing: -0.005em; }
+  .sub { color: #56626c; margin: 2px 0 10px; }
+  .acres { float: right; text-align: right; color: #56626c; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  .acres .n { font-family: 'Barlow Semi Condensed', 'Barlow', sans-serif; font-size: 34px; font-weight: 700; line-height: 1; color: #1b232a; letter-spacing: 0; text-transform: none; }
+  .map { width: 100%; height: 3.1in; object-fit: cover; border: 1px solid #c9d0d6; display: block; margin: 8px 0 14px; }
+  .nomap { height: 0.6in; display: grid; place-items: center; color: #8a949c; border: 1px dashed #c9d0d6; margin: 8px 0 14px; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  h2 { font-size: 14px; font-weight: 600; margin: 16px 0 6px; padding-bottom: 4px; border-bottom: 1px solid #1b232a; }
+  h3 { font-size: 10.5px; font-weight: 600; margin: 12px 0 4px; color: #56626c; text-transform: uppercase; letter-spacing: .07em; }
+  .muted { color: #7a858e; font-weight: 400; font-size: 11px; text-transform: none; letter-spacing: 0; }
   table { width: 100%; border-collapse: collapse; }
-  th, td { text-align: left; vertical-align: top; padding: 3px 6px 3px 0; border-bottom: 1px solid #eef; }
-  th { width: 38%; color: #556; font-weight: 600; }
+  th, td { text-align: left; vertical-align: top; padding: 4px 6px 4px 0; border-bottom: 1px solid #e3e7ea; }
+  th { width: 38%; color: #56626c; font-weight: 500; }
+  table.calc td.pct { width: 18%; text-align: right; color: #8a949c; font-variant-numeric: tabular-nums; }
+  table.calc td.v { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
   .draft { break-inside: avoid-page; }
-  .banner { background: #F3EEFF; border-left: 4px solid #7C3AED; padding: 5px 8px; margin: 4px 0 8px; color: #4C1D95; }
-  .total { font-size: 14px; } .total .big { font-size: 26px; font-weight: 800; }
-  .pass { margin-left: 8px; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 10px; }
-  .pass.yes { background: #E3F4E8; color: #1E7B3C; } .pass.no { background: #FDE8E8; color: #B42318; }
-  .compare { margin: 2px 0; } .delta { color: #1E7B3C; font-weight: 700; }
-  .lines { color: #445; margin: 4px 0; }
+  .banner { border-left: 2px solid #e8b04a; padding: 4px 9px; margin: 4px 0 8px; color: #3a454e; background: #fbf6ec; }
+  .total { font-size: 13px; color: #56626c; } .total .big { font-family: 'Barlow Semi Condensed', 'Barlow', sans-serif; font-size: 30px; font-weight: 700; color: #1b232a; }
+  .pass { margin-left: 8px; font-size: 10px; font-weight: 700; letter-spacing: .06em; padding: 2px 8px; border-radius: 10px; vertical-align: 4px; }
+  .pass.yes { background: #e4f3ea; color: #1f7a4a; } .pass.no { background: #fbe9e7; color: #b23a2e; }
+  .compare { margin: 2px 0; } .delta { color: #1f7a4a; font-weight: 700; }
+  .lines { color: #3a454e; margin: 4px 0; }
   ul.checks, ul.factors { list-style: none; padding: 0; margin: 0; }
-  ul.checks li, ul.factors li { display: flex; gap: 8px; padding: 3px 0; border-bottom: 1px solid #eef; }
-  ul.checks b, ul.factors b { flex: none; width: 16px; height: 16px; border-radius: 50%; display: grid; place-items: center; font-size: 10px; color: #fff; background: #889; }
-  .ck.ok b, .factors .good b { background: #2F855A; } .ck.lim b, .factors .warn b { background: #D99A00; } .ck.bad b { background: #B42318; }
-  table.cases { margin-top: 6px; font-size: 11px; } table.cases th { width: auto; }
-  .foot { margin-top: 16px; padding-top: 6px; border-top: 1px solid #dde; color: #778; font-size: 10px; }
-  .print { position: fixed; bottom: 18px; right: 18px; box-shadow: 0 2px 8px rgba(0,0,0,.25); padding: 8px 14px; border: 0; border-radius: 6px; background: #D6157A; color: #fff; font-weight: 700; cursor: pointer; }
+  ul.checks li, ul.factors li { display: flex; gap: 8px; padding: 4px 0; border-bottom: 1px solid #e3e7ea; }
+  ul.checks b, ul.factors b { flex: none; width: 15px; height: 15px; border-radius: 50%; display: grid; place-items: center; font-size: 9px; color: #fff; background: #8a949c; }
+  .ck.ok b, .factors .good b { background: #2f8a5c; } .ck.lim b, .factors .warn b { background: #c98f1c; } .ck.bad b { background: #b23a2e; }
+  table.cases { margin-top: 6px; font-size: 11px; } table.cases th { width: auto; font-weight: 600; color: #3a454e; }
+  .foot { margin-top: 18px; padding-top: 6px; border-top: 1px solid #c9d0d6; color: #7a858e; font-size: 9.5px; }
+  .print { position: fixed; bottom: 18px; right: 18px; box-shadow: 0 2px 10px rgba(0,0,0,.2); padding: 9px 16px; border: 0; border-radius: 6px; background: #3fa37e; color: #0f1a15; font: 600 13px 'Barlow', sans-serif; cursor: pointer; }
   @media print { .print { display: none; } .page { padding: 0; } }
 </style></head><body>
 <button class="print" onclick="window.print()">Print / Save as PDF</button>

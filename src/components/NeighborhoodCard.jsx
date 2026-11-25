@@ -768,7 +768,7 @@ export default function NeighborhoodCard({ parcel, parts, code: zonedCode, place
           </div>
           <ul className="mix-list">
             {plan.counts.filter((c) => c.lots).map((c) => (
-              <li key={c.i}><i className="dot" style={{ background: c.color }} />{c.width} × {c.depth} ft{housing === 'mix' ? ` · ${HOUSING.find((h) => h.key === (mix[c.i]?.home || 'sf')).label.toLowerCase()}` : ''}<span>{Math.round((c.lots / plan.lots) * 100)}%</span><strong>{c.lots} lots</strong></li>
+              <li key={c.i}><i className="dot" style={{ background: c.color }} />{c.width} × {c.depth} ft{housing === 'mix' ? ` · ${HOUSING.find((h) => h.key === (mix[c.i]?.home || 'sf')).label.toLowerCase()}` : ''}<span>{Math.round((c.lots / plan.lots) * 100)}%</span><strong>{c.lots} {c.lots === 1 ? 'lot' : 'lots'}</strong></li>
             ))}
           </ul>
 
