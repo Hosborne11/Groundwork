@@ -22,7 +22,7 @@ import { RULES as N1, APARTMENT } from '../data/charlotteUdo'
 export const ROW_FT = 50
 const BULB_R = 45 // cul-de-sac radius at the curb line, roughly
 const FT_PER_DEG_LAT = 364000
-export const LOT_COLORS = ['#F2C14E', '#E8833A', '#3BB98F']
+export const LOT_COLORS = ['#E3B341', '#D9773E', '#4FAE8B']
 
 /* ---------------- planar helpers (feet) ---------------- */
 const rot = ([x, y], a) => [x * Math.cos(a) - y * Math.sin(a), x * Math.sin(a) + y * Math.cos(a)]

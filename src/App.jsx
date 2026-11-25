@@ -178,8 +178,8 @@ export default function App() {
           { id: 'schools-label', type: 'symbol', source: 'schoolLabels', minzoom: 12.5, layout: {
             visibility: 'none', 'text-field': ['get', 'name'], 'text-font': ['Open Sans Semibold'], 'text-size': 11, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-max-width': 9,
           }, paint: { 'text-color': '#FFFFFF', 'text-halo-color': 'rgba(28,42,51,0.85)', 'text-halo-width': 1.4 } },
-          { id: 'opp-sel', type: 'line', source: 'opportunity', filter: ['==', ['get', 'id'], -1], paint: { 'line-color': '#D6157A', 'line-width': 3 } },
-          { id: 'parcels', type: 'line', source: 'parcels', minzoom: PARCEL_MIN_ZOOM, paint: { 'line-color': '#FFFFFF', 'line-opacity': 0.8, 'line-width': ['interpolate', ['linear'], ['zoom'], 15, 0.6, 18, 1.6] } },
+          { id: 'opp-sel', type: 'line', source: 'opportunity', filter: ['==', ['get', 'id'], -1], paint: { 'line-color': '#E8B04A', 'line-width': 3 } },
+          { id: 'parcels', type: 'line', source: 'parcels', minzoom: PARCEL_MIN_ZOOM, paint: { 'line-color': '#FFFFFF', 'line-opacity': 0.32, 'line-width': ['interpolate', ['linear'], ['zoom'], 15, 0.4, 18, 1] } },
           { id: 'water', type: 'line', source: 'water', minzoom: LINE_MIN_ZOOM, paint: { 'line-color': '#2F7DE1', 'line-width': ['interpolate', ['linear'], ['zoom'], 15, 1.5, 18, 4] } },
           { id: 'cltWater', type: 'line', source: 'cltWater', minzoom: 13, paint: { 'line-color': '#2F7DE1', 'line-width': ['interpolate', ['linear'], ['zoom'], 13, 2, 18, 5], 'line-opacity': 0.75, 'line-dasharray': [1.5, 1] } },
           { id: 'cltSewer', type: 'line', source: 'cltSewer', minzoom: 13, paint: { 'line-color': '#38A169', 'line-width': ['interpolate', ['linear'], ['zoom'], 13, 2, 18, 5], 'line-opacity': 0.75, 'line-dasharray': [1.5, 1], 'line-offset': 3 } },
@@ -188,54 +188,60 @@ export default function App() {
           { id: 'rezonings-line', type: 'line', source: 'rezonings', minzoom: 11, filter: ['in', ['get', 'kind'], ['literal', ['active', 'approved']]], paint: { 'line-color': ['match', ['get', 'kind'], 'active', '#F2A81D', '#A78BFA'], 'line-width': 2, 'line-dasharray': [2, 1.5] } },
           // concept site plan: fills, then edges, center stripes, and labels
           { id: 'siteplan-fill', type: 'fill', source: 'siteplan', filter: ['in', ['geometry-type'], ['literal', ['Polygon', 'MultiPolygon']]], paint: {
-            'fill-color': ['to-color', ['get', 'fill'], '#FFFFFF'],
-            'fill-opacity': ['match', ['get', 'kind'], 'lot', 0.85, 'road', 0.96, 'pond', 0.9, 'park', 0.62, 'green', 0.3, 'flood', 0.32, 'building', 0.94, 'alley', 0.9, 'parking', 0.9, 0.3],
+            // plat style: translucent lot tiers, asphalt streets, muted water and open space
+            'fill-color': ['match', ['get', 'kind'],
+              'lot', ['match', ['get', 'type'], 0, '#E3B341', 1, '#D9773E', 2, '#4FAE8B', '#E3B341'],
+              'road', '#2B3138', 'alley', '#2B3138', 'parking', '#262C32',
+              'pond', '#2D6E8E', 'park', '#4E9C74', 'green', '#4E9C74', 'flood', '#2D6E8E', 'building', '#7D8792',
+              ['to-color', ['get', 'fill'], '#FFFFFF']],
+            'fill-opacity': ['match', ['get', 'kind'], 'lot', 0.42, 'road', 0.95, 'alley', 0.9, 'parking', 0.9, 'pond', 0.78, 'park', 0.45, 'green', 0.18, 'flood', 0.28, 'building', 0.92, 0.3],
           } },
           { id: 'siteplan-edges', type: 'line', source: 'siteplan', filter: ['in', ['get', 'kind'], ['literal', ['road', 'pond', 'park', 'flood', 'building']]], paint: {
-            'line-color': ['match', ['get', 'kind'], 'road', '#EDE6D8', 'pond', '#A9D8F8', 'park', '#1D6B45', 'flood', '#4AA8D6', '#FFFFFF'],
-            'line-width': ['interpolate', ['linear'], ['zoom'], 14, 0.6, 17, ['match', ['get', 'kind'], 'pond', 2.5, 'road', 1.6, 1.5]],
+            'line-color': ['match', ['get', 'kind'], 'road', '#4A5560', 'alley', '#4A5560', 'pond', '#6FB3D2', 'park', '#6FC096', 'flood', '#6FB3D2',
+              'lot', ['match', ['get', 'type'], 0, '#F2CD6B', 1, '#EE9A62', 2, '#79CFAE', '#F2CD6B'], '#C9D1D8'],
+            'line-width': ['interpolate', ['linear'], ['zoom'], 14, 0.5, 17, ['match', ['get', 'kind'], 'pond', 1.4, 'road', 1, 1]],
             'line-opacity': 0.95,
           } },
           { id: 'siteplan-soft-edges', type: 'line', source: 'siteplan', filter: ['in', ['get', 'kind'], ['literal', ['green', 'flood']]], paint: {
-            'line-color': ['match', ['get', 'kind'], 'flood', '#4AA8D6', '#2F855A'], 'line-width': 1, 'line-opacity': 0.7, 'line-dasharray': [3, 2],
+            'line-color': ['match', ['get', 'kind'], 'flood', '#6FB3D2', '#6FC096'], 'line-width': 1, 'line-opacity': 0.75, 'line-dasharray': [3, 2],
           } },
           { id: 'siteplan-line', type: 'line', source: 'siteplan', filter: ['==', ['get', 'kind'], 'lot'], paint: {
             'line-color': '#FFFFFF', 'line-width': ['interpolate', ['linear'], ['zoom'], 14, 0.5, 16, 1, 18, 2],
           } },
           { id: 'siteplan-driveway', type: 'line', source: 'siteplan', minzoom: 15.5, filter: ['==', ['get', 'kind'], 'driveway'], layout: { 'line-cap': 'butt' }, paint: {
-            'line-color': '#CFC8B8', 'line-width': ['interpolate', ['exponential', 2], ['zoom'], 16, 2, 19, 14], 'line-opacity': 0.95,
+            'line-color': '#5E6873', 'line-width': ['interpolate', ['exponential', 2], ['zoom'], 16, 2, 19, 14], 'line-opacity': 0.9,
           } },
           { id: 'siteplan-centerline', type: 'line', source: 'siteplan', minzoom: 15.5, filter: ['==', ['get', 'kind'], 'centerline'], paint: {
-            'line-color': '#F4D35E', 'line-width': ['interpolate', ['linear'], ['zoom'], 16, 0.8, 18, 1.6], 'line-dasharray': [4, 3], 'line-opacity': 0.85,
+            'line-color': '#C9D1D8', 'line-width': ['interpolate', ['linear'], ['zoom'], 16, 0.6, 18, 1.2], 'line-dasharray': [5, 4], 'line-opacity': 0.45,
           } },
           { id: 'siteplan-lot-labels', type: 'symbol', source: 'siteplanLabels', minzoom: 16, filter: ['==', ['get', 'kind'], 'lot-label'],
             // lot number; its frontage × depth too when zoomed in close
             layout: { 'text-field': ['step', ['zoom'], ['get', 'label'], 17, ['format', ['get', 'label'], {}, '\n', {}, ['get', 'dims'], { 'font-scale': 0.78 }]],
               'text-font': ['Open Sans Semibold'], 'text-size': ['interpolate', ['linear'], ['zoom'], 16, 9, 18, 13], 'text-allow-overlap': false },
-            paint: { 'text-color': '#1C2A33', 'text-halo-color': 'rgba(255,255,255,0.7)', 'text-halo-width': 1.2 } },
+            paint: { 'text-color': '#F2F4F5', 'text-halo-color': 'rgba(20,25,30,0.85)', 'text-halo-width': 1.2 } },
           // street lengths along each street
           { id: 'siteplan-street-len', type: 'symbol', source: 'siteplanLabels', minzoom: 16, filter: ['==', ['get', 'kind'], 'street-len'],
             layout: { 'symbol-placement': 'line-center', 'text-field': ['get', 'label'], 'text-font': ['Open Sans Semibold'], 'text-size': ['interpolate', ['linear'], ['zoom'], 16, 10, 18, 12], 'text-offset': [0, -0.9] },
-            paint: { 'text-color': '#F4D35E', 'text-halo-color': 'rgba(28,42,51,0.9)', 'text-halo-width': 1.5 } },
+            paint: { 'text-color': '#E8B04A', 'text-halo-color': 'rgba(20,25,30,0.9)', 'text-halo-width': 1.5 } },
           { id: 'siteplan-area-labels', type: 'symbol', source: 'siteplanLabels', minzoom: 14.5, filter: ['==', ['get', 'kind'], 'area-label'],
             layout: { 'text-field': ['get', 'label'], 'text-font': ['Open Sans Semibold'], 'text-size': ['interpolate', ['linear'], ['zoom'], 15, 11, 18, 14], 'text-max-width': 8, 'symbol-sort-key': ['coalesce', ['get', 'rank'], 3] },
             paint: { 'text-color': '#FFFFFF', 'text-halo-color': 'rgba(28,42,51,0.85)', 'text-halo-width': 1.5 } },
           // editor: street centerlines (wide invisible line for easy clicking), selection, drawing preview
           { id: 'edit-streets-hit', type: 'line', source: 'editStreets', paint: { 'line-color': '#000', 'line-opacity': 0, 'line-width': 22 } },
           { id: 'edit-streets', type: 'line', source: 'editStreets', paint: { 'line-color': '#FFFFFF', 'line-width': 1.5, 'line-dasharray': [3, 2] } },
-          { id: 'edit-streets-sel', type: 'line', source: 'editStreets', filter: ['==', ['get', 'selected'], true], paint: { 'line-color': '#D6157A', 'line-width': 6, 'line-opacity': 0.9 } },
-          { id: 'edit-lot-sel', type: 'line', source: 'editDraw', filter: ['==', ['get', 'kind'], 'lot-sel'], paint: { 'line-color': '#D6157A', 'line-width': 3 } },
-          { id: 'edit-draw-line', type: 'line', source: 'editDraw', filter: ['==', ['get', 'kind'], 'draw'], paint: { 'line-color': '#D6157A', 'line-width': 3, 'line-dasharray': [2, 1] } },
-          { id: 'edit-draw-pts', type: 'circle', source: 'editDraw', filter: ['==', ['get', 'kind'], 'vertex'], paint: { 'circle-radius': 4.5, 'circle-color': '#FFFFFF', 'circle-stroke-color': '#D6157A', 'circle-stroke-width': 2 } },
+          { id: 'edit-streets-sel', type: 'line', source: 'editStreets', filter: ['==', ['get', 'selected'], true], paint: { 'line-color': '#E8B04A', 'line-width': 6, 'line-opacity': 0.9 } },
+          { id: 'edit-lot-sel', type: 'line', source: 'editDraw', filter: ['==', ['get', 'kind'], 'lot-sel'], paint: { 'line-color': '#E8B04A', 'line-width': 3 } },
+          { id: 'edit-draw-line', type: 'line', source: 'editDraw', filter: ['==', ['get', 'kind'], 'draw'], paint: { 'line-color': '#E8B04A', 'line-width': 3, 'line-dasharray': [2, 1] } },
+          { id: 'edit-draw-pts', type: 'circle', source: 'editDraw', filter: ['==', ['get', 'kind'], 'vertex'], paint: { 'circle-radius': 4.5, 'circle-color': '#FFFFFF', 'circle-stroke-color': '#E8B04A', 'circle-stroke-width': 2 } },
           // direct editing: the site boundary, draggable lot lines, and handles
-          { id: 'edit-boundary', type: 'line', source: 'editDraw', filter: ['==', ['get', 'kind'], 'boundary'], paint: { 'line-color': '#D6157A', 'line-width': 2.5, 'line-dasharray': [3, 1.5] } },
+          { id: 'edit-boundary', type: 'line', source: 'editDraw', filter: ['==', ['get', 'kind'], 'boundary'], paint: { 'line-color': '#E8B04A', 'line-width': 2.5, 'line-dasharray': [3, 1.5] } },
           { id: 'edit-lotlines', type: 'line', source: 'editDraw', filter: ['==', ['get', 'kind'], 'lotline'], paint: { 'line-color': '#FFFFFF', 'line-width': 1.2, 'line-opacity': 0.55 } },
-          { id: 'edit-lotline-active', type: 'line', source: 'editDraw', filter: ['==', ['get', 'kind'], 'lotline-active'], paint: { 'line-color': '#D6157A', 'line-width': 3.5 } },
+          { id: 'edit-lotline-active', type: 'line', source: 'editDraw', filter: ['==', ['get', 'kind'], 'lotline-active'], paint: { 'line-color': '#E8B04A', 'line-width': 3.5 } },
           { id: 'edit-handles', type: 'circle', source: 'editDraw', filter: ['==', ['get', 'kind'], 'handle'], paint: {
             'circle-radius': ['case', ['get', 'soft'], 6, 5.5], 'circle-color': '#FFFFFF', 'circle-stroke-color': '#1C2A33', 'circle-stroke-width': 2,
           } },
-          { id: 'selected-fill', type: 'fill', source: 'selected', paint: { 'fill-color': '#D6157A', 'fill-opacity': 0.14 } },
-          { id: 'selected-line', type: 'line', source: 'selected', paint: { 'line-color': '#D6157A', 'line-width': 3 } },
+          { id: 'selected-fill', type: 'fill', source: 'selected', paint: { 'fill-color': '#E8B04A', 'fill-opacity': 0.06 } },
+          { id: 'selected-line', type: 'line', source: 'selected', paint: { 'line-color': '#E8B04A', 'line-width': 2 } },
         ],
       },
     })
@@ -461,7 +467,7 @@ export default function App() {
     m.getSource('siteplan')?.setData(turf.featureCollection(feats.filter((f) => !isLabel(f))))
     m.getSource('siteplanLabels')?.setData(turf.featureCollection(feats.filter(isLabel)))
     // fade the pink selection fill while a sketch is showing so the lots read clearly
-    m.setPaintProperty('selected-fill', 'fill-opacity', fc ? 0 : 0.14)
+    m.setPaintProperty('selected-fill', 'fill-opacity', fc ? 0 : 0.06)
   }, [])
 
   const isSaved = !!selected && saved.some((s) => s.pin === selected.properties.id)

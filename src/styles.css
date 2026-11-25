@@ -593,3 +593,131 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .approval .precedents li { padding: 2px 0; }
 .approval .precedents .link-btn { text-align: left; }
 .approval .precedents .link-btn.on { color: #7C3AED; font-weight: 700; }
+
+
+/* =====================================================================
+   Theme: surveyor's plat at night
+   Dark graphite surfaces, thin rules, Barlow (highway-sign DIN lineage).
+   This layer redefines the tokens and patches rules that used --ink as
+   a background or hard-coded light colors.
+   ===================================================================== */
+:root {
+  --base: #14191e;        /* app chrome, rail */
+  --card: #1c232a;        /* panels, menus */
+  --paper: #232b33;       /* inset rows, segmented controls */
+  --raise: #2a333c;       /* hover */
+  --rule: #2c3640;        /* dividers, outlines */
+  --ink: #e4e8eb;         /* primary text */
+  --ink-2: #aeb8c1;
+  --ink-3: #7e8a95;
+  --accent: #3fa37e;      /* verdigris: primary actions, selection */
+  --accent-ink: #0f1a15;
+  --survey: #e8b04a;      /* survey-flag amber: selected parcel, edits */
+  --sewer: #4bb07a;
+  --water: #5aa7e6;
+  --good: #4bb07a;
+  --watch: #d9a43b;
+  --flag: #e06a5f;
+  --font: 'Barlow', 'Helvetica Neue', Arial, sans-serif;
+  --font-num: 'Barlow Semi Condensed', 'Barlow', Arial, sans-serif;
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 10px 30px rgba(0, 0, 0, 0.45);
+  color-scheme: dark;
+}
+body { background: var(--base); font-size: 14px; letter-spacing: 0.005em; }
+button, input, select, textarea { font-family: var(--font); color: var(--ink); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+::selection { background: rgba(63, 163, 126, 0.35); }
+* { scrollbar-width: thin; scrollbar-color: #3a4651 transparent; }
+
+/* chrome: brand, search, menus */
+.brand { background: var(--card); color: var(--ink); border: 1px solid var(--rule); }
+.brand-mark { background: var(--survey); box-shadow: 0 0 0 3px rgba(232, 176, 74, 0.22); }
+.brand-scope { color: var(--ink-3); }
+.search input, input[type='search'] { background: var(--card); color: var(--ink); border: 1px solid var(--rule); box-shadow: var(--shadow); }
+.search input::placeholder { color: var(--ink-3); }
+.results, .county-menu { background: var(--card); border: 1px solid var(--rule); }
+.results li button:hover, .saved-item:hover, .county-menu button:hover { background: var(--raise); }
+.county-menu button.on { background: rgba(63, 163, 126, 0.16); }
+.saved-toggle, .county-btn { background: var(--card); border-color: var(--rule); color: var(--ink); }
+.saved-toggle.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.count { background: var(--survey); color: #1d1608; }
+
+/* rail */
+.rail { background: var(--base); color: var(--ink-3); border-right: 1px solid var(--rule); }
+.rail-mark span { background: var(--survey); box-shadow: 0 0 0 4px rgba(232, 176, 74, 0.2); }
+.rail-btn:hover { background: var(--raise); color: var(--ink); }
+.rail-btn.on { background: rgba(63, 163, 126, 0.14); color: var(--ink); }
+.rail-btn.on::before { background: var(--accent); }
+.avatar { background: var(--accent); color: var(--accent-ink); }
+
+/* panels */
+.panel, .flyout { background: var(--card); border: 1px solid var(--rule); box-shadow: var(--shadow); }
+.flyout { border-width: 0 1px 0 0; }
+.panel .section, .flyout .section { border-color: var(--rule); }
+.close:hover { background: var(--raise); color: var(--ink); }
+h1, h2, h3 { color: var(--ink); letter-spacing: 0; }
+.section h3 { font-size: 12.5px; font-weight: 600; color: var(--ink-2); letter-spacing: 0.02em; }
+.acres, .big-num, .nb-total strong, .yield strong, .opp-score { font-family: var(--font-num); }
+
+/* buttons */
+.btn { background: var(--paper); border-color: var(--rule); color: var(--ink); font-weight: 600; }
+.btn:hover { background: var(--raise); }
+.btn-primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn-primary:hover { background: #4ab38c; }
+.btn-on, .btn.on { background: rgba(232, 176, 74, 0.14); color: var(--survey); border-color: rgba(232, 176, 74, 0.5); }
+.chip-btn { background: var(--paper); border-color: var(--rule); color: var(--ink-2); }
+.chip-btn.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.link-btn { color: var(--water); }
+
+/* inset and status surfaces */
+.chip { background: rgba(90, 167, 230, 0.14); color: #9fcbf1; }
+.note.warn, .multi-sale, .petition-note { background: rgba(217, 164, 59, 0.1); color: var(--ink); }
+.toast { background: var(--card); color: var(--ink); border: 1px solid var(--rule); }
+.zt { background: var(--paper); color: var(--ink); border: 1px solid var(--rule); }
+.zt.sfx { background: rgba(90, 167, 230, 0.14); color: #9fcbf1; border-color: transparent; }
+.zc-token { color: var(--survey); }
+.zc-desc { color: var(--ink-2); }
+.rz-status { background: var(--paper); color: var(--ink-2) !important; }
+.rz-status.k-active { background: rgba(217, 164, 59, 0.16); color: #f0c46a !important; }
+.rz-status.k-approved { background: rgba(167, 139, 250, 0.16); color: #c4b5fd !important; }
+.pl-change { color: #f0c46a; }
+.pass.yes { background: rgba(75, 176, 122, 0.16); color: #7fd3a5; }
+.pass.no { background: rgba(224, 106, 95, 0.16); color: #f2a59e; }
+.plan-status { background: rgba(75, 176, 122, 0.16); color: #7fd3a5; }
+.plan-status.dirty { background: rgba(217, 164, 59, 0.16); color: #f0c46a; }
+.plans li.on { background: rgba(63, 163, 126, 0.1); }
+.editor-box { border-color: var(--survey); background: rgba(232, 176, 74, 0.06); }
+.opp-score { color: #0f1a15; }
+.opp-bar i { background: var(--accent); }
+.bars rect { fill: #4f5d69; }
+.udo-checks .limited .mark { background: var(--watch); }
+.udo-checks .mark { color: #0f1418; }
+.verdict { color: #0f1418; }
+.lg { border-color: rgba(255, 255, 255, 0.18); }
+.lg.lot { background: #d9773e; } .lg.street { background: #2b3138; } .lg.open { background: #4e9c74; } .lg.flood { background: #2d6e8e; }
+.sw.road { background: #2b3138; box-shadow: inset 0 0 0 1px #4a5560; }
+.sw.pond { background: #2d6e8e; box-shadow: inset 0 0 0 1px #6fb3d2; }
+.sw.park { background: rgba(78, 156, 116, 0.55); box-shadow: inset 0 0 0 1px #4e9c74; }
+.sw.green { background: rgba(78, 156, 116, 0.18); border: 1px dashed #4e9c74; }
+.sw.flood { background: rgba(45, 110, 142, 0.35); border: 1px dashed #6fb3d2; }
+.sw.drive { background: #8e969e; }
+.swatch.line { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2); }
+.basemap { background: var(--paper); border-color: var(--rule); }
+.thumb-streets { filter: brightness(0.55) contrast(1.1); }
+
+/* inputs */
+select, .target select, .housing-pick select, .mix-home, textarea, input[type='text'], input[type='number'] {
+  background: var(--paper); color: var(--ink); border: 1px solid var(--rule);
+}
+
+/* MapLibre controls and attribution */
+.maplibregl-ctrl-group { background: var(--card) !important; border: 1px solid var(--rule); box-shadow: var(--shadow) !important; }
+.maplibregl-ctrl-group button + button { border-top-color: var(--rule) !important; }
+.maplibregl-ctrl-group button .maplibregl-ctrl-icon { filter: invert(0.85); }
+.maplibregl-ctrl-attrib { background: rgba(20, 25, 30, 0.72) !important; color: var(--ink-3); }
+.maplibregl-ctrl-attrib a { color: var(--ink-2); }
+.maplibregl-ctrl-scale { background: rgba(20, 25, 30, 0.72); color: var(--ink-2); border-color: var(--ink-3); }
+.maplibregl-popup-content { background: var(--card); color: var(--ink); box-shadow: var(--shadow); }
+.maplibregl-popup-tip { border-top-color: var(--card) !important; border-bottom-color: var(--card) !important; }
+
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
