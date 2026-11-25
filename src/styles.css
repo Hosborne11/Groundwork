@@ -779,3 +779,7 @@ a:hover { color: #8cc3f0; }
 .checks-box > summary em.ok { background: rgba(75, 176, 122, 0.16); color: #7fd3a5; }
 .checks-box > summary em.bad { background: rgba(224, 106, 95, 0.16); color: #f2a59e; }
 .checks-box .udo-checks { margin: 0; padding: 4px 12px 10px; border-top: 1px solid var(--rule); }
+
+/* sliders and checkboxes take the accent */
+input[type='range'], input[type='checkbox'], input[type='radio'] { accent-color: var(--accent); }
+.slider input, .trend-year input, .layer-row input { accent-color: var(--accent); }

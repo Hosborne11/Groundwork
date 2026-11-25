@@ -176,9 +176,9 @@ export default function App() {
           { id: 'assembly-site-line', type: 'line', source: 'assembly', filter: ['==', ['get', 'kind'], 'site'], paint: { 'line-color': '#F59E0B', 'line-width': 3.5 } },
           // schools: blue dots, darker for higher grades; names when zoomed in
           { id: 'schools-dot', type: 'circle', source: 'schools', layout: { visibility: 'none' }, paint: {
-            'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 3, 14, 7],
-            'circle-color': ['match', ['get', 'level'], 'Elementary', '#7FB8F0', 'Middle', '#3C8DDB', 'High', '#1F4E9A', '#9AA5AE'],
-            'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': 1.5, 'circle-opacity': ['match', ['get', 'type'], 'Private', 0.6, 1],
+            'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 2, 12, 3.5, 15, 6],
+            'circle-color': ['match', ['get', 'level'], 'Elementary', '#B9D3EE', 'Middle', '#86ADD9', 'High', '#5A86BE', '#9AA5AE'],
+            'circle-stroke-color': '#14191E', 'circle-stroke-width': 1, 'circle-opacity': ['match', ['get', 'type'], 'Private', 0.55, 0.9],
           } },
           { id: 'schools-label', type: 'symbol', source: 'schoolLabels', minzoom: 12.5, layout: {
             visibility: 'none', 'text-field': ['get', 'name'], 'text-font': ['Open Sans Semibold'], 'text-size': 11, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-max-width': 9,
